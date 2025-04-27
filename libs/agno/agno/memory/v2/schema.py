@@ -15,6 +15,8 @@ class UserMemory:
     memory_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        if self.last_updated and isinstance(self.last_updated, str):
+            self.last_updated = datetime.fromisoformat(self.last_updated)
         _dict = {
             "memory_id": self.memory_id,
             "memory": self.memory,
