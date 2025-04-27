@@ -162,6 +162,8 @@ class Team:
     tools: Optional[List[Union[Toolkit, Callable, Function, Dict]]] = None
     # Show tool calls in Team response. This sets the default for the team.
     show_tool_calls: bool = True
+    # If True, show the tool calls details in the Team response.
+    show_tool_calls_details: bool = False
     # Controls which (if any) tool is called by the team model.
     # "none" means the model will not call a tool and instead generates a message.
     # "auto" means the model can pick between generating a message or calling a tool.
@@ -258,6 +260,7 @@ class Team:
         read_team_history: bool = False,
         tools: Optional[List[Union[Toolkit, Callable, Function, Dict]]] = None,
         show_tool_calls: bool = True,
+        show_tool_calls_details: bool = False,
         tool_call_limit: Optional[int] = None,
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         tool_hooks: Optional[List[Callable]] = None,
@@ -323,6 +326,7 @@ class Team:
 
         self.tools = tools
         self.show_tool_calls = show_tool_calls
+        self.show_tool_calls_details = show_tool_calls_details
         self.tool_choice = tool_choice
         self.tool_call_limit = tool_call_limit
         self.tool_hooks = tool_hooks
@@ -1061,87 +1065,127 @@ class Team:
 
             # If the model response is a tool_call_started, add the tool call to the run_response
             elif model_response_chunk.event == ModelResponseEvent.tool_call_started.value:
-                # Add tool calls to the run_response
-                new_tool_calls_list = model_response_chunk.tool_calls
-                if new_tool_calls_list is not None:
-                    # Add tool calls to the agent.run_response
-                    if run_response.tools is None:
-                        run_response.tools = new_tool_calls_list
-                    else:
-                        run_response.tools.extend(new_tool_calls_list)
+                if self.show_tool_calls_details and isinstance(model_response_chunk, RunResponse):
+                    if stream_intermediate_steps:
+                        run_response.tools = model_response_chunk.tools
+                        run_response.formatted_tool_calls = format_tool_calls(
+                            run_response.tools
+                        )
+                        yield self._create_run_response(
+                            content=model_response_chunk.content,
+                            event=RunEvent.tool_call_started,
+                            from_run_response=run_response,
+                            session_id=session_id,
+                        )
+                else:
+                    # Add tool calls to the run_response
+                    new_tool_calls_list = model_response_chunk.tool_calls
+                    if new_tool_calls_list is not None:
+                        # Add tool calls to the agent.run_response
+                        if run_response.tools is None:
+                            run_response.tools = new_tool_calls_list
+                        else:
+                            run_response.tools.extend(new_tool_calls_list)
 
-                # Format tool calls whenever new ones are added during streaming
-                run_response.formatted_tool_calls = format_tool_calls(run_response.tools)
+                    # Format tool calls whenever new ones are added during streaming
+                    run_response.formatted_tool_calls = format_tool_calls(run_response.tools)
 
-                # Only yield the event if streaming intermediate steps
-                if stream_intermediate_steps:
-                    yield self._create_run_response(
-                        content=model_response_chunk.content,
-                        event=RunEvent.tool_call_started,
-                        from_run_response=run_response,
-                        session_id=session_id,
-                    )
+                    # Only yield the event if streaming intermediate steps
+                    if self.show_tool_calls_details:
+                        yield self._create_run_response(
+                            content=model_response_chunk.content,
+                            event=RunEvent.tool_call_started,
+                            from_run_response=run_response,
+                            session_id=session_id,
+                        )
 
             # If the model response is a tool_call_completed, update the existing tool call in the run_response
             elif model_response_chunk.event == ModelResponseEvent.tool_call_completed.value:
-                reasoning_step: Optional[ReasoningStep] = None
-                new_tool_calls_list = model_response_chunk.tool_calls
-                if new_tool_calls_list is not None:
-                    # Update the existing tool call in the run_response
-                    if run_response.tools:
-                        # Create a mapping of tool_call_id to index
-                        tool_call_index_map = {
-                            tc["tool_call_id"]: i
-                            for i, tc in enumerate(run_response.tools)
-                            if tc.get("tool_call_id") is not None
-                        }
-                        # Process tool calls
-                        for tool_call_dict in new_tool_calls_list:
-                            tool_call_id = tool_call_dict.get("tool_call_id")
-                            index = tool_call_index_map.get(tool_call_id)
-                            if index is not None:
-                                run_response.tools[index] = tool_call_dict
-                    else:
-                        run_response.tools = new_tool_calls_list
-
-                    # Only iterate through new tool calls
-                    for tool_call in new_tool_calls_list:
-                        tool_name = tool_call.get("tool_name", "")
-                        if tool_name.lower() in ["think", "analyze"]:
-                            tool_args = tool_call.get("tool_args", {})
-
-                            reasoning_step = self.update_reasoning_content_from_tool_call(
-                                run_response, tool_name, tool_args
-                            )
-
-                            metrics = tool_call.get("metrics")
-                            if metrics is not None:
-                                reasoning_time_taken = reasoning_time_taken + float(metrics.time)
-
+                if self.show_tool_calls_details and isinstance(model_response_chunk, RunResponse):
                     if stream_intermediate_steps:
-                        if reasoning_step is not None:
-                            if not reasoning_started:
-                                yield self._create_run_response(
-                                    content="Reasoning started",
-                                    session_id=session_id,
-                                    event=RunEvent.reasoning_started,
-                                )
-                                reasoning_started = True
-
-                            yield self._create_run_response(
-                                content=reasoning_step,
-                                content_type=reasoning_step.__class__.__name__,
-                                event=RunEvent.reasoning_step,
-                                reasoning_content=run_response.reasoning_content,
-                                session_id=session_id,
-                            )
-
+                        run_response.tools = model_response_chunk.tools
+                        run_response.formatted_tool_calls = format_tool_calls(
+                            run_response.tools
+                        )
                         yield self._create_run_response(
                             content=model_response_chunk.content,
                             event=RunEvent.tool_call_completed,
                             from_run_response=run_response,
                             session_id=session_id,
                         )
+                else:
+                    reasoning_step: Optional[ReasoningStep] = None
+                    new_tool_calls_list = model_response_chunk.tool_calls
+                    if new_tool_calls_list is not None:
+                        # Update the existing tool call in the run_response
+                        if run_response.tools:
+                            # Create a mapping of tool_call_id to index
+                            tool_call_index_map = {
+                                tc["tool_call_id"]: i
+                                for i, tc in enumerate(run_response.tools)
+                                if tc.get("tool_call_id") is not None
+                            }
+                            # Process tool calls
+                            for tool_call_dict in new_tool_calls_list:
+                                tool_call_id = tool_call_dict.get("tool_call_id")
+                                index = tool_call_index_map.get(tool_call_id)
+                                if index is not None:
+                                    run_response.tools[index] = tool_call_dict
+                        else:
+                            run_response.tools = new_tool_calls_list
+
+                        # Only iterate through new tool calls
+                        for tool_call in new_tool_calls_list:
+                            tool_name = tool_call.get("tool_name", "")
+                            if tool_name.lower() in ["think", "analyze"]:
+                                tool_args = tool_call.get("tool_args", {})
+
+                                reasoning_step = self.update_reasoning_content_from_tool_call(
+                                    run_response, tool_name, tool_args
+                                )
+
+                                metrics = tool_call.get("metrics")
+                                if metrics is not None:
+                                    reasoning_time_taken = reasoning_time_taken + float(metrics.time)
+
+                        if stream_intermediate_steps:
+                            if reasoning_step is not None:
+                                if not reasoning_started:
+                                    yield self._create_run_response(
+                                        content="Reasoning started",
+                                        session_id=session_id,
+                                        event=RunEvent.reasoning_started,
+                                    )
+                                    reasoning_started = True
+
+                                yield self._create_run_response(
+                                    content=reasoning_step,
+                                    content_type=reasoning_step.__class__.__name__,
+                                    event=RunEvent.reasoning_step,
+                                    reasoning_content=run_response.reasoning_content,
+                                    session_id=session_id,
+                                )
+
+                            if self.show_tool_calls_details:
+                                yield self._create_run_response(
+                                    content=model_response_chunk.content,
+                                    event=RunEvent.tool_call_started,
+                                    session_id=session_id,
+                                )
+                            else:
+                                yield self._create_run_response(
+                                    content=model_response_chunk.content,
+                                    event=RunEvent.tool_call_started,
+                                    from_run_response=run_response,
+                                    session_id=session_id,
+                                )
+
+            elif self.show_tool_calls_details and model_response_chunk.event == RunEvent.run_response.value:
+                yield self._create_run_response(
+                    content=model_response_chunk.content,
+                    event=RunEvent.run_response,
+                    session_id=session_id,
+                )
 
         # 3. Update TeamRunResponse
         run_response.created_at = full_model_response.created_at
@@ -1635,7 +1679,11 @@ class Team:
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
 
-            await self._amake_memories_and_summaries(run_messages, session_id, user_id)
+            asyncio.create_task(
+                self._amake_memories_and_summaries(
+                    run_messages, session_id, user_id
+                )
+            )
 
             session_messages: List[Message] = []
             for run in self.memory.runs[session_id]:
@@ -1801,87 +1849,128 @@ class Team:
 
             # If the model response is a tool_call_started, add the tool call to the run_response
             elif model_response_chunk.event == ModelResponseEvent.tool_call_started.value:
-                # Add tool calls to the run_response
-                new_tool_calls_list = model_response_chunk.tool_calls
-                if new_tool_calls_list is not None:
-                    # Add tool calls to the agent.run_response
-                    if run_response.tools is None:
-                        run_response.tools = new_tool_calls_list
-                    else:
-                        run_response.tools.extend(new_tool_calls_list)
-
-                # Format tool calls whenever new ones are added during streaming
-                run_response.formatted_tool_calls = format_tool_calls(run_response.tools)
-
-                # Only yield the event if streaming intermediate steps
-                if stream_intermediate_steps:
-                    yield self._create_run_response(
-                        content=model_response_chunk.content,
-                        event=RunEvent.tool_call_started,
-                        from_run_response=run_response,
-                        session_id=session_id,
-                    )
-
-            # If the model response is a tool_call_completed, update the existing tool call in the run_response
-            elif model_response_chunk.event == ModelResponseEvent.tool_call_completed.value:
-                reasoning_step: Optional[ReasoningStep] = None
-                new_tool_calls_list = model_response_chunk.tool_calls
-                if new_tool_calls_list is not None:
-                    # Update the existing tool call in the run_response
-                    if run_response.tools:
-                        # Create a mapping of tool_call_id to index
-                        tool_call_index_map = {
-                            tc["tool_call_id"]: i
-                            for i, tc in enumerate(run_response.tools)
-                            if tc.get("tool_call_id") is not None
-                        }
-                        # Process tool calls
-                        for tool_call_dict in new_tool_calls_list:
-                            tool_call_id = tool_call_dict.get("tool_call_id")
-                            index = tool_call_index_map.get(tool_call_id)
-                            if index is not None:
-                                run_response.tools[index] = tool_call_dict
-                    else:
-                        run_response.tools = new_tool_calls_list
-
-                    # Only iterate through new tool calls
-                    for tool_call in new_tool_calls_list:
-                        tool_name = tool_call.get("tool_name", "")
-                        if tool_name.lower() in ["think", "analyze"]:
-                            tool_args = tool_call.get("tool_args", {})
-
-                            reasoning_step = self.update_reasoning_content_from_tool_call(
-                                run_response, tool_name, tool_args
-                            )
-
-                            metrics = tool_call.get("metrics")
-                            if metrics is not None:
-                                reasoning_time_taken = reasoning_time_taken + float(metrics.time)
-
+                if self.show_tool_calls_details and isinstance(model_response_chunk, RunResponse):
                     if stream_intermediate_steps:
-                        if reasoning_step is not None:
-                            if not reasoning_started:
-                                yield self._create_run_response(
-                                    content="Reasoning started",
-                                    session_id=session_id,
-                                    event=RunEvent.reasoning_started,
-                                )
-                                reasoning_started = True
+                        run_response.tools = model_response_chunk.tools
+                        run_response.formatted_tool_calls = format_tool_calls(
+                            run_response.tools
+                        )
+                        yield self._create_run_response(
+                            content=model_response_chunk.content,
+                            event=RunEvent.tool_call_started,
+                            from_run_response=run_response,
+                            session_id=session_id,
+                        )
+                else:
+                    if not self.show_tool_calls_details:
+                        # Add tool calls to the run_response
+                        new_tool_calls_list = model_response_chunk.tool_calls
+                        if new_tool_calls_list is not None:
+                            # Add tool calls to the agent.run_response
+                            if run_response.tools is None:
+                                run_response.tools = new_tool_calls_list
+                            else:
+                                run_response.tools.extend(new_tool_calls_list)
 
+                        # Format tool calls whenever new ones are added during streaming
+                        run_response.formatted_tool_calls = format_tool_calls(run_response.tools)
+
+                        # Only yield the event if streaming intermediate steps
+                        if stream_intermediate_steps:
                             yield self._create_run_response(
-                                content=reasoning_step,
-                                content_type=reasoning_step.__class__.__name__,
-                                event=RunEvent.reasoning_step,
-                                reasoning_content=run_response.reasoning_content,
+                                content=model_response_chunk.content,
+                                event=RunEvent.tool_call_started,
+                                from_run_response=run_response,
                                 session_id=session_id,
                             )
 
+            # If the model response is a tool_call_completed, update the existing tool call in the run_response
+            elif model_response_chunk.event == ModelResponseEvent.tool_call_completed.value:
+                if self.show_tool_calls_details and isinstance(model_response_chunk, RunResponse):
+                    if stream_intermediate_steps:
+                        run_response.tools = model_response_chunk.tools
+                        run_response.formatted_tool_calls = format_tool_calls(
+                            run_response.tools
+                        )
                         yield self._create_run_response(
                             content=model_response_chunk.content,
                             event=RunEvent.tool_call_completed,
                             from_run_response=run_response,
                             session_id=session_id,
                         )
+                else:
+                    if not self.show_tool_calls_details:
+                        reasoning_step: Optional[ReasoningStep] = None
+                        new_tool_calls_list = model_response_chunk.tool_calls
+                        if new_tool_calls_list is not None:
+                            # Update the existing tool call in the run_response
+                            if run_response.tools:
+                                # Create a mapping of tool_call_id to index
+                                tool_call_index_map = {
+                                    tc["tool_call_id"]: i
+                                    for i, tc in enumerate(run_response.tools)
+                                    if tc.get("tool_call_id") is not None
+                                }
+                                # Process tool calls
+                                for tool_call_dict in new_tool_calls_list:
+                                    tool_call_id = tool_call_dict.get("tool_call_id")
+                                    index = tool_call_index_map.get(tool_call_id)
+                                    if index is not None:
+                                        run_response.tools[index] = tool_call_dict
+                            else:
+                                run_response.tools = new_tool_calls_list
+
+                            # Only iterate through new tool calls
+                            for tool_call in new_tool_calls_list:
+                                tool_name = tool_call.get("tool_name", "")
+                                if tool_name.lower() in ["think", "analyze"]:
+                                    tool_args = tool_call.get("tool_args", {})
+
+                                    reasoning_step = self.update_reasoning_content_from_tool_call(
+                                        run_response, tool_name, tool_args
+                                    )
+
+                                    metrics = tool_call.get("metrics")
+                                    if metrics is not None:
+                                        reasoning_time_taken = reasoning_time_taken + float(metrics.time)
+
+                            if stream_intermediate_steps:
+                                if reasoning_step is not None:
+                                    if not reasoning_started:
+                                        yield self._create_run_response(
+                                            content="Reasoning started",
+                                            session_id=session_id,
+                                            event=RunEvent.reasoning_started,
+                                        )
+                                        reasoning_started = True
+
+                                    yield self._create_run_response(
+                                        content=reasoning_step,
+                                        content_type=reasoning_step.__class__.__name__,
+                                        event=RunEvent.reasoning_step,
+                                        reasoning_content=run_response.reasoning_content,
+                                        session_id=session_id,
+                                    )
+
+                                if self.show_tool_calls_details:
+                                    yield self._create_run_response(
+                                        content=model_response_chunk.content,
+                                        event=RunEvent.tool_call_started,
+                                        session_id=session_id,
+                                    )
+                                else:
+                                    yield self._create_run_response(
+                                        content=model_response_chunk.content,
+                                        event=RunEvent.tool_call_started,
+                                        from_run_response=run_response,
+                                        session_id=session_id,
+                                    )
+            elif self.show_tool_calls_details and model_response_chunk.event == RunEvent.run_response.value:
+                yield self._create_run_response(
+                    content=model_response_chunk.content,
+                    event=RunEvent.run_response,
+                    session_id=session_id,
+                )
 
         # 3. Update the run_response
         # Handle structured outputs
@@ -1963,7 +2052,11 @@ class Team:
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
 
-            await self._amake_memories_and_summaries(run_messages, session_id, user_id)
+            asyncio.create_task(
+                self._amake_memories_and_summaries(
+                    run_messages, session_id, user_id
+                )
+            )
 
             session_messages: List[Message] = []
             for run in self.memory.runs[session_id]:  # type: ignore
@@ -1982,7 +2075,7 @@ class Team:
 
         if stream_intermediate_steps:
             yield self._create_run_response(
-                from_run_response=run_response,
+                # from_run_response=run_response,
                 event=RunEvent.run_completed,
                 reasoning_content=run_response.reasoning_content,
                 session_id=session_id,
@@ -5731,7 +5824,10 @@ class Team:
                     member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=True
                 )
                 for member_agent_run_response_chunk in member_agent_run_response_stream:
-                    yield member_agent_run_response_chunk.content or ""
+                    if self.show_tool_calls_details:
+                        yield member_agent_run_response_chunk or ModelResponse()
+                    else:
+                        yield member_agent_run_response_chunk.content or ""
             else:
                 member_agent_run_response = member_agent.run(
                     member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=False
@@ -5832,7 +5928,10 @@ class Team:
                 )
                 async for member_agent_run_response_chunk in member_agent_run_response_stream:
                     check_if_run_cancelled(member_agent_run_response_chunk)
-                    yield member_agent_run_response_chunk.content or ""
+                    if self.show_tool_calls_details:
+                        yield member_agent_run_response_chunk or ModelResponse()
+                    else:
+                        yield member_agent_run_response_chunk.content or ""
             else:
                 member_agent_run_response = await member_agent.arun(
                     member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=False

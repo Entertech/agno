@@ -21,6 +21,7 @@ from typing import (
     overload,
 )
 from uuid import uuid4
+import asyncio
 
 from pydantic import BaseModel
 
@@ -96,6 +97,8 @@ class Agent:
     enable_agentic_memory: bool = False
     # If True, the agent creates/updates user memories at the end of runs
     enable_user_memories: bool = False
+    # If True, the agent creates/updates user memories asynchronously
+    make_user_memories_create_and_update_async: bool = False
     # If True, the agent adds a reference to the user memories in the response
     add_memory_references: Optional[bool] = None
     # If True, the agent creates/updates session summaries at the end of runs
@@ -136,6 +139,8 @@ class Agent:
     show_tool_calls: bool = True
     # Maximum number of tool calls allowed.
     tool_call_limit: Optional[int] = None
+    # If True, the agent deletes tool metrics from the tool calls in the run response
+    delete_tool_metrics_in_run_response: bool = False
     # Controls which (if any) tool is called by the model.
     # "none" means the model will not call a tool and instead generates a message.
     # "auto" means the model can pick between generating a message or calling a tool.
@@ -288,6 +293,7 @@ class Agent:
         memory: Optional[Union[AgentMemory, Memory]] = None,
         enable_agentic_memory: bool = False,
         enable_user_memories: bool = False,
+        make_user_memories_create_and_update_async: bool = False,
         add_memory_references: Optional[bool] = None,
         enable_session_summaries: bool = False,
         add_session_summary_references: Optional[bool] = None,
@@ -302,6 +308,7 @@ class Agent:
         extra_data: Optional[Dict[str, Any]] = None,
         tools: Optional[List[Union[Toolkit, Callable, Function, Dict]]] = None,
         show_tool_calls: bool = True,
+        delete_tool_metrics_in_run_response: bool = False,
         tool_call_limit: Optional[int] = None,
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         tool_hooks: Optional[List[Callable]] = None,
@@ -369,6 +376,7 @@ class Agent:
         self.memory = memory
         self.enable_agentic_memory = enable_agentic_memory
         self.enable_user_memories = enable_user_memories
+        self.make_user_memories_create_and_update_async = make_user_memories_create_and_update_async
         self.add_memory_references = add_memory_references
         self.enable_session_summaries = enable_session_summaries
         self.add_session_summary_references = add_session_summary_references
@@ -387,6 +395,7 @@ class Agent:
 
         self.tools = tools
         self.show_tool_calls = show_tool_calls
+        self.delete_tool_metrics_in_run_response = delete_tool_metrics_in_run_response
         self.tool_call_limit = tool_call_limit
         self.tool_choice = tool_choice
         self.tool_hooks = tool_hooks
@@ -757,6 +766,10 @@ class Agent:
                     new_tool_calls_list = model_response_chunk.tool_calls
                     if new_tool_calls_list is not None:
                         # Update the existing tool call in the run_response
+                        if self.delete_tool_metrics_in_run_response:
+                            for tool_call in new_tool_calls_list:
+                                del tool_call["metrics"]
+
                         if self.run_response.tools:
                             # Create a mapping of tool_call_id to index
                             tool_call_index_map = {
@@ -1398,6 +1411,10 @@ class Agent:
                     new_tool_calls_list = model_response_chunk.tool_calls
                     if new_tool_calls_list is not None:
                         # Update the existing tool call in the run_response
+                        if self.delete_tool_metrics_in_run_response:
+                            for tool_call in new_tool_calls_list:
+                                del tool_call["metrics"]
+
                         if self.run_response.tools:
                             # Create a mapping of tool_call_id to index
                             tool_call_index_map = {
@@ -1599,10 +1616,19 @@ class Agent:
             # Add AgentRun to memory
             self.memory.add_run(session_id=session_id, run=self.run_response)
 
-            await self._amake_memories_and_summaries(run_messages, session_id, user_id, messages)  # type: ignore
+            if self.make_user_memories_create_and_update_async:
+                asyncio.create_task(
+                    self._amake_memories_and_summaries(
+                        run_messages, session_id, user_id, messages
+                    )
+                )
+            else:
+                await self._amake_memories_and_summaries(
+                    run_messages, session_id, user_id, messages
+                )
 
         # Yield UpdatingMemory event
-        if self.stream_intermediate_steps:
+        if not self.make_user_memories_create_and_update_async and self.stream_intermediate_steps:
             yield self.create_run_response(
                 content="Memory updated",
                 session_id=session_id,
@@ -1630,7 +1656,7 @@ class Agent:
         await self._alog_agent_run(user_id=user_id, session_id=session_id)
 
         log_debug(f"Agent Run End: {self.run_response.run_id}", center=True, symbol="*")
-        if self.stream_intermediate_steps:
+        if not self.make_user_memories_create_and_update_async and self.stream_intermediate_steps:
             yield self.create_run_response(
                 content=self.run_response.content,
                 reasoning_content=self.run_response.reasoning_content,
