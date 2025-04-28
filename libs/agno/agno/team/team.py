@@ -1679,8 +1679,14 @@ class Team:
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
 
+            async def _amake_memories_and_summaries(run_messages: RunMessages, session_id: str, user_id: Optional[str] = None):
+                await self._amake_memories_and_summaries(
+                    run_messages, session_id, user_id
+                )
+                self.write_to_storage(session_id=session_id, user_id=user_id)
+
             asyncio.create_task(
-                self._amake_memories_and_summaries(
+                _amake_memories_and_summaries(
                     run_messages, session_id, user_id
                 )
             )
@@ -2052,8 +2058,14 @@ class Team:
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
 
+            async def _amake_memories_and_summaries(run_messages: RunMessages, session_id: str, user_id: Optional[str] = None):
+                await self._amake_memories_and_summaries(
+                    run_messages, session_id, user_id
+                )
+                self.write_to_storage(session_id=session_id, user_id=user_id)
+
             asyncio.create_task(
-                self._amake_memories_and_summaries(
+                _amake_memories_and_summaries(
                     run_messages, session_id, user_id
                 )
             )
