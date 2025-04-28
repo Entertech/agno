@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import ChainMap, defaultdict, deque
+from collections import ChainMap, deque
 from dataclasses import asdict, dataclass
 from os import getenv
 from textwrap import dedent
@@ -968,12 +968,17 @@ class Agent:
                 self.memory.update_summary()
 
             # 10. Calculate session metrics
-            self.session_metrics = self.calculate_session_metrics(self.memory.messages)
+            self.session_metrics = self.calculate_metrics(self.memory.messages)
         elif isinstance(self.memory, Memory):
             # Add AgentRun to memory
             self.memory.add_run(session_id=session_id, run=self.run_response)
 
             self._make_memories_and_summaries(run_messages, session_id, user_id, messages)  # type: ignore
+
+            if self.session_metrics is None:
+                self.session_metrics = self.calculate_metrics(run_messages.messages)  # Calculate metrics for the run
+            else:
+                self.session_metrics += self.calculate_session_metrics(session_id)  # Calculate metrics for the session
 
         # Yield UpdatingMemory event
         if self.stream_intermediate_steps:
@@ -1612,7 +1617,7 @@ class Agent:
             if self.memory.create_session_summary and self.memory.update_session_summary_after_run:
                 await self.memory.aupdate_summary()
 
-            self.session_metrics = self.calculate_session_metrics(self.memory.messages)
+            self.session_metrics = self.calculate_metrics(self.memory.messages)
         elif isinstance(self.memory, Memory):
             # Add AgentRun to memory
             self.memory.add_run(session_id=session_id, run=self.run_response)
@@ -1627,6 +1632,11 @@ class Agent:
                 await self._amake_memories_and_summaries(
                     run_messages, session_id, user_id, messages
                 )
+
+            if self.session_metrics is None:
+                self.session_metrics = self.calculate_metrics(run_messages.messages)  # Calculate metrics for the run
+            else:
+                self.session_metrics += self.calculate_session_metrics(session_id)  # Calculate metrics for the session
 
         # Yield UpdatingMemory event
         if not self.make_user_memories_create_and_update_async and self.stream_intermediate_steps:
@@ -1904,9 +1914,6 @@ class Agent:
         if self.enable_session_summaries:
             self.memory.create_session_summary(session_id=session_id, user_id=user_id)
 
-        # Calculate session metrics
-        self.session_metrics = self.calculate_session_metrics(session_messages)
-
     async def _amake_memories_and_summaries(
         self,
         run_messages: RunMessages,
@@ -1948,9 +1955,6 @@ class Agent:
         # Update the session summary if needed
         if self.enable_session_summaries:
             await self.memory.acreate_session_summary(session_id=session_id, user_id=user_id)
-
-        # Calculate session metrics
-        self.session_metrics = self.calculate_session_metrics(session_messages)
 
     def get_tools(
         self, session_id: str, async_mode: bool = False, user_id: Optional[str] = None
@@ -3496,7 +3500,7 @@ class Agent:
             self.run_response.reasoning_content += reasoning_content
 
     def aggregate_metrics_from_messages(self, messages: List[Message]) -> Dict[str, Any]:
-        aggregated_metrics: Dict[str, Any] = defaultdict(list)
+        aggregated_metrics: Dict[str, Any] = {}
         assistant_message_role = self.model.assistant_message_role if self.model is not None else "assistant"
         for m in messages:
             if m.role == assistant_message_role and m.metrics is not None:
@@ -3504,18 +3508,26 @@ class Agent:
                     if k == "timer":
                         continue
                     if v is not None:
-                        aggregated_metrics[k].append(v)
-        if aggregated_metrics is not None:
-            aggregated_metrics = dict(aggregated_metrics)
+                        aggregated_metrics[k] = v
         return aggregated_metrics
 
-    def calculate_session_metrics(self, messages: List[Message]) -> SessionMetrics:
+    def calculate_metrics(self, messages: List[Message]) -> SessionMetrics:
         session_metrics = SessionMetrics()
         assistant_message_role = self.model.assistant_message_role if self.model is not None else "assistant"
         for m in messages:
             if m.role == assistant_message_role and m.metrics is not None:
                 session_metrics += m.metrics
         return session_metrics
+
+    def calculate_session_metrics(self, session_id: str) -> SessionMetrics:
+        self.memory = cast(Memory, self.memory)
+        runs = self.memory.get_runs(session_id=session_id)
+        run_metrics = {}
+        for run in runs:
+            if run.metrics is not None:
+                run_metrics.update(run.metrics)
+
+        return SessionMetrics(**run_metrics)
 
     def rename(self, name: str, session_id: Optional[str] = None) -> None:
         """Rename the Agent and save to storage"""
