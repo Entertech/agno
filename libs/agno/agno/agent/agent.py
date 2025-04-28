@@ -1701,7 +1701,9 @@ class Agent:
             user_id = self.user_id
 
         if session_id is None or session_id == "":
-            if not (self.session_id is None or self.session_id == ""):
+            if self.team_session_id is not None:
+                session_id = self.team_session_id
+            elif not (self.session_id is None or self.session_id == ""):
                 session_id = self.session_id
             else:
                 # Generate a new session_id and store it in the agent
