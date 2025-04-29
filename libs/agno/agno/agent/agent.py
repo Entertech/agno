@@ -1252,7 +1252,8 @@ class Agent:
         self.stream = self.stream or (stream and self.is_streamable)
         self.stream_intermediate_steps = self.stream_intermediate_steps or (stream_intermediate_steps and self.stream)
         # 1.3 Create a run_id and RunResponse
-        self.run_id = str(uuid4())
+        if self.run_id is None:
+            self.run_id = str(uuid4())
         self.run_response = RunResponse(run_id=self.run_id, session_id=session_id, agent_id=self.agent_id)
 
         log_debug(f"Async Agent Run Start: {self.run_response.run_id}", center=True, symbol="*")
