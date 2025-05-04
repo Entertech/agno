@@ -41,7 +41,6 @@ from agno.run.team import TeamRunResponse
 from agno.storage.base import Storage
 from agno.storage.session.agent import AgentSession
 from agno.tools.function import Function
-from agno.tools.mcp import MCPTools, MultiMCPTools
 from agno.tools.toolkit import Toolkit
 from agno.utils.log import (
     log_debug,
@@ -5452,7 +5451,7 @@ class Agent:
             for tool in self.tools:
                 if isawaitable(tool):
                     raise NotImplementedError("Use `acli_app` to use async tools.")
-                if isinstance(tool, MCPTools) or isinstance(tool, MultiMCPTools):
+                if tool.__class__.__name__ in ["MCPTools", "MultiMCPTools"]:
                     raise NotImplementedError("Use `acli_app` to use MCP tools.")
 
         if message:
