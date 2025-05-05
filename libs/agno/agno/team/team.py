@@ -909,7 +909,7 @@ class Team:
             self._make_memories_and_summaries(run_messages, session_id, user_id)
 
             session_messages: List[Message] = []
-            for run in self.memory.runs[session_id]:  # type: ignore
+            for run in self.memory.runs.get(session_id, []):  # type: ignore
                 if run.messages is not None:
                     for m in run.messages:
                         session_messages.append(m)
@@ -1270,7 +1270,7 @@ class Team:
             self._make_memories_and_summaries(run_messages, session_id, user_id)
 
             session_messages: List[Message] = []
-            for run in self.memory.runs[session_id]:  # type: ignore
+            for run in self.memory.runs.get(session_id, []):  # type: ignore
                 if run.messages is not None:
                     for m in run.messages:
                         session_messages.append(m)
@@ -1699,7 +1699,7 @@ class Team:
             )
 
             session_messages: List[Message] = []
-            for run in self.memory.runs[session_id]:
+            for run in self.memory.runs.get(session_id, []):
                 for m in run.messages:
                     session_messages.append(m)
 
@@ -2078,7 +2078,7 @@ class Team:
             )
 
             session_messages: List[Message] = []
-            for run in self.memory.runs[session_id]:  # type: ignore
+            for run in self.memory.runs.get(session_id, []):  # type: ignore
                 if run.messages is not None:
                     for m in run.messages:
                         session_messages.append(m)
