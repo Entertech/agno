@@ -6775,7 +6775,12 @@ class Team:
             team_session: TeamSession = self.team_session or self._get_team_session(
                 session_id=session_id, user_id=user_id
             )
-
+            #check team_id length is 36
+            if len(team_session.team_id) != 36:
+                show_team_id=str(uuid4())
+                team_session.team_id=show_team_id
+                team_session.memory['runs'][0]['team_id']=show_team_id
+                log_debug(f"Team ID is not a valid UUID, using {show_team_id} instead")
             create_team_run(
                 run=TeamRunCreate(
                     run_id=self.run_id,  # type: ignore
@@ -6788,6 +6793,7 @@ class Team:
             )
         except Exception as e:
             log_debug(f"Could not create team event: {e}")
+   
 
     async def _alog_team_run(self, session_id: str, user_id: Optional[str] = None) -> None:
         if not self.telemetry and not self.monitoring:
@@ -6800,7 +6806,12 @@ class Team:
             team_session: TeamSession = self.team_session or self._get_team_session(
                 session_id=session_id, user_id=user_id
             )
-
+            #check team_id length is 36
+            if len(team_session.team_id) != 36:
+                show_team_id=str(uuid4())
+                team_session.team_id=show_team_id
+                team_session.memory['runs'][0]['team_id']=show_team_id
+                log_debug(f"Team ID is not a valid UUID, using {show_team_id} instead")
             await acreate_team_run(
                 run=TeamRunCreate(
                     run_id=self.run_id,
