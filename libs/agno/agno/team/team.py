@@ -2124,6 +2124,24 @@ class Team:
             run_messages.user_message.get_content_string() if run_messages.user_message is not None else None
         )
         if self.enable_user_memories and user_message_str is not None and user_message_str:
+            if run_messages.user_message is not None and run_messages.user_message.images is not None:
+                # 获取对话历史
+                conversation_history = self.storage.read(session_id=session_id, user_id=user_id)
+                # 获取最后一轮对话
+                last_message = conversation_history.memory["runs"][-1]["member_responses"][-1] if conversation_history is not None else None
+                if last_message is not None:
+                    # 获取最后一轮对话的图片
+                    last_message_images = [img.url for img in run_messages.user_message.images]
+                    last_message_images_str = "\n".join(last_message_images)
+                    # 获取最后一轮回答
+                    last_message_answer = last_message.get("content", "")
+                    user_message_str = [
+                        f"<user_input>\n{user_message_str}\n<user_input>\n",
+                        f"<assistant_answer>\n{last_message_answer}\n<assistant_answer>\n",
+                        f"<resources>\n{last_message_images_str}\n<resources>\n",
+                    ]
+                    user_message_str = "\n".join(user_message_str)
+
             await self.memory.acreate_user_memories(message=user_message_str, user_id=user_id)
 
         # Update the session summary if needed
