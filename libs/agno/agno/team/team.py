@@ -6774,20 +6774,21 @@ class Team:
             team_session: TeamSession = self.team_session or self._get_team_session(
                 session_id=session_id, user_id=user_id
             )
-            #check team_id length is 36
+            run=TeamRunCreate(
+                run_id=self.run_id,  # type: ignore
+                run_data=run_data,
+                team_session_id=team_session.team_session_id,
+                session_id=team_session.session_id,
+                team_data=team_session.to_dict() if self.monitoring else team_session.telemetry_data(),
+            )
             if len(team_session.team_id) != 36:
                 show_team_id=str(uuid4())
-                team_session.team_id=show_team_id
-                team_session.memory['runs'][0]['team_id']=show_team_id
+                run.team_data['team_id']=show_team_id
+                run.team_data['team_data']['team_id']=show_team_id
+                run.run_data['run_response']['team_id']=show_team_id
                 log_debug(f"Team ID is not a valid UUID, using {show_team_id} instead")
             create_team_run(
-                run=TeamRunCreate(
-                    run_id=self.run_id,  # type: ignore
-                    run_data=run_data,
-                    team_session_id=team_session.team_session_id,
-                    session_id=team_session.session_id,
-                    team_data=team_session.to_dict() if self.monitoring else team_session.telemetry_data(),
-                ),
+                run=run,
                 monitor=self.monitoring,
             )
         except Exception as e:
@@ -6805,19 +6806,21 @@ class Team:
             team_session: TeamSession = self.team_session or self._get_team_session(
                 session_id=session_id, user_id=user_id
             )
-            #check team_id length is 36
+            run=TeamRunCreate(
+                run_id=self.run_id,  # type: ignore
+                run_data=run_data,
+                team_session_id=team_session.team_session_id,
+                session_id=team_session.session_id,
+                team_data=team_session.to_dict() if self.monitoring else team_session.telemetry_data(),
+            )
             if len(team_session.team_id) != 36:
                 show_team_id=str(uuid4())
-                team_session.team_id=show_team_id
-                team_session.memory['runs'][0]['team_id']=show_team_id
+                run.team_data['team_id']=show_team_id
+                run.team_data['team_data']['team_id']=show_team_id
+                run.run_data['run_response']['team_id']=show_team_id
                 log_debug(f"Team ID is not a valid UUID, using {show_team_id} instead")
             await acreate_team_run(
-                run=TeamRunCreate(
-                    run_id=self.run_id,
-                    run_data=run_data,
-                    session_id=team_session.session_id,
-                    team_data=team_session.to_dict() if self.monitoring else team_session.telemetry_data(),
-                ),
+                run=run,
                 monitor=self.monitoring,
             )
         except Exception as e:
