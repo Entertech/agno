@@ -4424,15 +4424,20 @@ class Agent:
             agent_session: AgentSession = self.agent_session or self.get_agent_session(
                 session_id=session_id, user_id=user_id
             )
-
-            create_agent_run(
-                run=AgentRunCreate(
+            run=AgentRunCreate(
                     run_id=self.run_id,
                     run_data=run_data,
                     session_id=agent_session.session_id,
                     agent_data=agent_session.to_dict() if self.monitoring else agent_session.telemetry_data(),
                     team_session_id=agent_session.team_session_id,
-                ),
+                )
+            agent_session_id=str(uuid4())
+            run.session_id=agent_session_id
+            run.run_data['run_response']['session_id']=agent_session_id
+            agent_session.session_id=agent_session_id
+            log_debug(f"Monitored agent_session_id: {agent_session_id}")
+            create_agent_run(
+                run=run,
                 monitor=self.monitoring,
             )
         except Exception as e:
@@ -4451,15 +4456,20 @@ class Agent:
             agent_session: AgentSession = self.agent_session or self.get_agent_session(
                 session_id=session_id, user_id=user_id
             )
-
-            await acreate_agent_run(
-                run=AgentRunCreate(
+            run=AgentRunCreate(
                     run_id=self.run_id,
                     run_data=run_data,
                     session_id=agent_session.session_id,
                     agent_data=agent_session.to_dict() if self.monitoring else agent_session.telemetry_data(),
                     team_session_id=agent_session.team_session_id,
-                ),
+                )
+            agent_session_id=str(uuid4())
+            run.session_id=agent_session_id
+            run.run_data['run_response']['session_id']=agent_session_id
+            agent_session.session_id=agent_session_id
+            log_debug(f"Monitored agent_session_id: {agent_session_id}")
+            await acreate_agent_run(
+                run=run,
                 monitor=self.monitoring,
             )
         except Exception as e:
