@@ -893,14 +893,10 @@ class Model(ABC):
                         if fc.function.show_result:
                             yield ModelResponse(content=str(item))
             else:
-                if self.show_tool_calls and isinstance(item, ModelResponse):
-                    yield item
-                elif self.show_tool_calls and isinstance(item, RunResponse):
-                    yield item
-                else:
-                    function_call_output = str(fc.result)
-                    if fc.function.show_result:
-                        yield ModelResponse(content=function_call_output)
+                function_call_output = str(fc.result)
+                if fc.function.show_result:
+                    yield ModelResponse(content=function_call_output)
+
 
             # Create and yield function call result
             function_call_result = self._create_function_call_result(
