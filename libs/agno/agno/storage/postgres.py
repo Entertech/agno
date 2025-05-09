@@ -13,7 +13,7 @@ try:
     from sqlalchemy.engine import Engine, create_engine
     from sqlalchemy.inspection import inspect
     from sqlalchemy.orm import scoped_session, sessionmaker
-    from sqlalchemy.schema import Column, Index, MetaData, Table
+    from sqlalchemy.schema import Column, MetaData, Table
     from sqlalchemy.sql.expression import select, text
     from sqlalchemy.types import BigInteger, String
 except ImportError:
@@ -99,10 +99,8 @@ class PostgresStorage(Storage):
         """
         # Common columns for both agent and workflow modes
         common_columns = [
-            Column("id", BigInteger, primary_key=True, autoincrement=True),
-            Column("session_id", String, index=True),
+            Column("session_id", String, primary_key=True),
             Column("user_id", String, index=True),
-            Index("idx_user_id_session_id", "user_id", "session_id", unique=True),
             Column("memory", postgresql.JSONB),
             Column("session_data", postgresql.JSONB),
             Column("extra_data", postgresql.JSONB),
@@ -365,15 +363,6 @@ class PostgresStorage(Storage):
             return
 
         try:
-            if self.table_exists():
-                # Add id column if it doesn't exist
-                if "id" not in [c.name for c in self.table.columns]:
-                    alter_table_query = text(
-                        f"ALTER TABLE {self.schema}.{self.table_name} ADD COLUMN id BIGSERIAL PRIMARY KEY"
-                    )
-                    self.Session().execute(alter_table_query)
-                    self.Session().commit()
-
             if self.mode == "agent" and self.table_exists():
                 with self.Session() as sess:
                     # Check if team_session_id column exists
@@ -434,7 +423,7 @@ class PostgresStorage(Storage):
                     # Define the upsert if the session_id already exists
                     # See: https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#postgresql-insert-on-conflict
                     stmt = stmt.on_conflict_do_update(
-                        index_elements=["user_id", "session_id"],
+                        index_elements=["session_id"],
                         set_=dict(
                             agent_id=session.agent_id,  # type: ignore
                             team_session_id=session.team_session_id,  # type: ignore
@@ -460,7 +449,7 @@ class PostgresStorage(Storage):
                     # Define the upsert if the session_id already exists
                     # See: https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#postgresql-insert-on-conflict
                     stmt = stmt.on_conflict_do_update(
-                        index_elements=["user_id", "session_id"],
+                        index_elements=["session_id"],
                         set_=dict(
                             team_id=session.team_id,  # type: ignore
                             user_id=session.user_id,
@@ -485,7 +474,7 @@ class PostgresStorage(Storage):
                     # Define the upsert if the session_id already exists
                     # See: https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#postgresql-insert-on-conflict
                     stmt = stmt.on_conflict_do_update(
-                        index_elements=["user_id", "session_id"],
+                        index_elements=["session_id"],
                         set_=dict(
                             workflow_id=session.workflow_id,  # type: ignore
                             user_id=session.user_id,
