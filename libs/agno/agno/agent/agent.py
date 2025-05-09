@@ -1930,9 +1930,37 @@ class Agent:
         self.memory = cast(Memory, self.memory)
         session_messages: List[Message] = []
         if self.enable_user_memories and run_messages.user_message is not None:
+            user_message_str = run_messages.user_message.get_content_string()
+
+            if run_messages.user_message is not None and run_messages.user_message.images is not None:
+                # 获取对话历史
+                conversation_history = self.storage.read(session_id=session_id, user_id=user_id)
+                # 获取最后一轮对话
+                last_messages = conversation_history.memory["runs"][-1]["messages"] if conversation_history is not None else None
+                last_message_images_str = ""
+                last_message_answer = ""
+                last_message_query = ""
+                for message in last_messages:
+                    # 获取最后一轮回答
+                    if last_message_answer == "" and message.get("role", "") == "assistant":
+                        last_message_answer = message.get("content", "")
+                    # 获取最后一轮查询
+                    if last_message_query == "" and message.get("role", "") == "user":
+                        # 获取最后一轮对话的图片
+                        if last_message_images_str == "":
+                            last_message_images = [img.get("url", "") for img in message.get("images", [])]
+                            last_message_images_str = "\n".join(last_message_images)
+                        break
+                user_message_str = [
+                    f"<user_input>\n{user_message_str}\n<user_input>\n",
+                    f"<assistant_answer>\n{last_message_answer}\n<assistant_answer>\n",
+                    f"<resources>\n{last_message_images_str}\n<resources>\n",
+                ]
+                user_message_str = "\n".join(user_message_str)
+
             log_debug("Creating user memories.")
             await self.memory.acreate_user_memories(
-                message=run_messages.user_message.get_content_string(), user_id=user_id
+                message=user_message_str, user_id=user_id
             )
 
             # TODO: Possibly do both of these in one step
