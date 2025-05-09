@@ -184,6 +184,9 @@ class Team:
     # If True, parse the response
     parse_response: bool = True
 
+    # If True, enable the shared run_id for all members
+    enable_shared_run_id_for_members: bool = False
+
     # --- History ---
     # Memory for the team
     memory: Optional[Union[TeamMemory, Memory]] = None
@@ -425,6 +428,9 @@ class Team:
 
         if session_id is not None:
             member.team_session_id = session_id
+
+        if self.enable_shared_run_id_for_members and self.run_id is not None:
+            member.run_id = self.run_id
 
         # Set the team session state on members
         if self.session_state is not None:
