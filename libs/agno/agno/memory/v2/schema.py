@@ -1,4 +1,3 @@
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -58,54 +57,6 @@ class UserMemory:
         if status:
             data["status"] = status
         return cls(**data)
-
-
-@dataclass
-class Media:
-    """Model for User Memories"""
-
-    id: str
-    type: str
-    mime: str
-    url: str
-
-    def to_dict(self) -> Dict[str, Any]:
-        _dict = {
-            "id": self.id,
-            "type": self.type,
-            "mime": self.mime,
-            "url": self.url,
-        }
-        return {k: v for k, v in _dict.items() if v is not None}
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Media":
-        return cls(**data)
-
-
-class UserMemoryWithMedia(UserMemory):
-    medias: Optional[List[Media]] = None
-
-    def __init__(self, *args, **kwargs):
-        if "medias" in kwargs:
-            self.medias = kwargs.get("medias")
-            del kwargs["medias"]
-        super().__init__(*args, **kwargs)
-
-    def to_dict(self) -> Dict[str, Any]:
-        _dict = super().to_dict()
-        _dict["medias"] = [media.to_dict() for media in self.medias or []]
-        return _dict
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "UserMemoryWithMedia":
-        medias = data.get("medias")
-        data["medias"] = [Media.from_dict(media) for media in medias or []]
-        return cls(**data)
-
-
-if os.environ.get("AGNO_USER_MEMORY_CLASS") == "UserMemoryWithMedia":
-    UserMemory = UserMemoryWithMedia
 
 
 @dataclass
