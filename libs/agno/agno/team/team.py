@@ -270,6 +270,7 @@ class Team:
         response_model: Optional[Type[BaseModel]] = None,
         use_json_mode: bool = False,
         parse_response: bool = True,
+        enable_shared_run_id_for_members: bool = False,
         memory: Optional[Union[TeamMemory, Memory]] = None,
         enable_agentic_memory: bool = False,
         enable_user_memories: bool = False,
@@ -337,7 +338,7 @@ class Team:
         self.response_model = response_model
         self.use_json_mode = use_json_mode
         self.parse_response = parse_response
-
+        self.enable_shared_run_id_for_members = enable_shared_run_id_for_members
         self.memory = memory
         self.enable_agentic_memory = enable_agentic_memory
         self.enable_user_memories = enable_user_memories
