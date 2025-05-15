@@ -21,6 +21,8 @@ class UserMemory:
     datetime_at: Optional[datetime] = None
     status: Optional[str] = None
 
+    sensitive_mapping: str = None
+
     def to_dict(self) -> Dict[str, Any]:
         if self.last_updated and isinstance(self.last_updated, str):
             self.last_updated = datetime.fromisoformat(self.last_updated)
@@ -36,26 +38,18 @@ class UserMemory:
             "resource_type": self.resource_type,
             "datetime_at": self.datetime_at.isoformat() if self.datetime_at else None,
             "status": self.status,
+            "sensitive_mapping": self.sensitive_mapping,
         }
         return {k: v for k, v in _dict.items() if v is not None}
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "UserMemory":
         last_updated = data.get("last_updated")
-        resource_uri = data.get("resource_uri")
-        resource_type = data.get("resource_type")
         datetime_at = data.get("datetime_at")
-        status = data.get("status")
         if last_updated:
             data["last_updated"] = datetime.fromisoformat(last_updated)
-        if resource_uri:
-            data["resource_uri"] = resource_uri
-        if resource_type:
-            data["resource_type"] = resource_type
         if datetime_at:
             data["datetime_at"] = datetime.fromisoformat(datetime_at)
-        if status:
-            data["status"] = status
         return cls(**data)
 
 

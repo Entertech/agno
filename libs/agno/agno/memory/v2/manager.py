@@ -337,7 +337,7 @@ class MemoryManager:
     ) -> List[Callable]:
         from datetime import datetime
 
-        def add_memory(memory: str, topics: Optional[List[str]] = None, resource_uri: Optional[List[str]] = None, resource_type: Optional[List[str]] = None, datetime_at: Optional[str] = None, status: Optional[str] = None) -> str:
+        def add_memory(memory: str, topics: Optional[List[str]] = None, resource_uri: Optional[List[str]] = None, resource_type: Optional[List[str]] = None, datetime_at: Optional[str] = None, status: Optional[str] = None, sensitive_mapping: Optional[str] = None) -> str:
             """Use this function to add a memory to the database.
             Args:
                 memory (str): The memory to be added.
@@ -346,6 +346,7 @@ class MemoryManager:
                 resource_type (Optional[List[str]]): The resource type of the memory.
                 datetime_at (Optional[str]): The datetime of the memory.
                 status (Optional[str]): The status of the memory.
+                sensitive_mapping (Optional[str]): The sensitive mapping of the memory.
             Returns:
                 str: A message indicating if the memory was added successfully or not.
             """
@@ -368,6 +369,7 @@ class MemoryManager:
                             resource_type=resource_type,
                             datetime_at=datetime_at,
                             status=status,
+                            sensitive_mapping=sensitive_mapping,
                         ).to_dict(),
                         last_updated=last_updated,
                     )
@@ -378,7 +380,7 @@ class MemoryManager:
                 log_warning(f"Error storing memory in db: {e}")
                 return f"Error adding memory: {e}"
 
-        def update_memory(memory_id: str, memory: str, topics: Optional[List[str]] = None, resource_uri: Optional[List[str]] = None, resource_type: Optional[List[str]] = None, datetime_at: Optional[str] = None, status: Optional[str] = None) -> str:
+        def update_memory(memory_id: str, memory: str, topics: Optional[List[str]] = None, resource_uri: Optional[List[str]] = None, resource_type: Optional[List[str]] = None, datetime_at: Optional[str] = None, status: Optional[str] = None, sensitive_mapping: Optional[str] = None) -> str:
             """Use this function to update an existing memory in the database.
             Args:
                 memory_id (str): The id of the memory to be updated.
@@ -388,6 +390,7 @@ class MemoryManager:
                 resource_type (Optional[List[str]]): The resource type of the memory.
                 datetime_at (Optional[str]): The datetime of the memory.
                 status (Optional[str]): The status of the memory.
+                sensitive_mapping (Optional[str]): The sensitive mapping of the memory.
             Returns:
                 str: A message indicating if the memory was updated successfully or not.
             """
@@ -407,6 +410,7 @@ class MemoryManager:
                             resource_type=resource_type,
                             datetime_at=datetime_at,
                             status=status,
+                            sensitive_mapping=sensitive_mapping,
                         ).to_dict(),
                         last_updated=last_updated,
                     )
