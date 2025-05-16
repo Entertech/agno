@@ -4713,20 +4713,28 @@ class Team:
             system_message_content += "</success_criteria>\n"
             system_message_content += "Stop the team run when the success_criteria is met.\n\n"
 
-        # Attached media
-        if audio is not None or images is not None or videos is not None or files is not None:
-            system_message_content += "<attached_media>\n"
-            system_message_content += "You have the following media attached to your message:\n"
-            if audio is not None and len(audio) > 0:
-                system_message_content += " - Audio\n"
-            if images is not None and len(images) > 0:
-                system_message_content += " - Images\n"
-            if videos is not None and len(videos) > 0:
-                system_message_content += " - Videos\n"
-            if files is not None and len(files) > 0:
-                system_message_content += " - Files\n"
-            system_message_content += "</attached_media>\n\n"
+        if self.description is not None:
+            system_message_content += f"<description>\n{self.description}\n</description>\n\n"
 
+        # 3.3.5 Then add instructions for the Agent
+        if len(instructions) > 0:
+            system_message_content += "<instructions>"
+            if len(instructions) > 1:
+                for _upi in instructions:
+                    system_message_content += f"\n- {_upi}"
+            else:
+                system_message_content += "\n" + instructions[0]
+            system_message_content += "\n</instructions>\n\n"
+
+        # 3.3.7 Then add instructions for the tools
+        if self._tool_instructions is not None:
+            for _ti in self._tool_instructions:
+                system_message_content += f"{_ti}\n"
+
+        system_message_from_model = self.model.get_system_message_for_model()
+        if system_message_from_model is not None:
+            system_message_content += system_message_from_model
+编排
         # Then add memories to the system prompt
         if self.memory:
             if isinstance(self.memory, Memory) and (self.add_memory_references):
@@ -4776,44 +4784,38 @@ class Team:
                         "You should ALWAYS prefer information from this conversation over the past summary.\n\n"
                     )
 
-        if self.description is not None:
-            system_message_content += f"<description>\n{self.description}\n</description>\n\n"
-
-        # 3.3.5 Then add instructions for the Agent
-        if len(instructions) > 0:
-            system_message_content += "<instructions>"
-            if len(instructions) > 1:
-                for _upi in instructions:
-                    system_message_content += f"\n- {_upi}"
-            else:
-                system_message_content += "\n" + instructions[0]
-            system_message_content += "\n</instructions>\n\n"
         # 3.3.6 Add additional information
         if len(additional_information) > 0:
             system_message_content += "<additional_information>"
             for _ai in additional_information:
                 system_message_content += f"\n- {_ai}"
             system_message_content += "\n</additional_information>\n\n"
-        # 3.3.7 Then add instructions for the tools
-        if self._tool_instructions is not None:
-            for _ti in self._tool_instructions:
-                system_message_content += f"{_ti}\n"
-
-        # Format the system message with the session state variables
-        if self.add_state_in_messages:
-            system_message_content = self._format_message_with_state_variables(system_message_content, user_id=user_id)
-
-        system_message_from_model = self.model.get_system_message_for_model()
-        if system_message_from_model is not None:
-            system_message_content += system_message_from_model
-
-        if self.expected_output is not None:
-            system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
 
         if self.additional_context is not None:
             system_message_content += (
                 f"<additional_context>\n{self.additional_context.strip()}\n</additional_context>\n\n"
             )
+
+        # Attached media
+        if audio is not None or images is not None or videos is not None or files is not None:
+            system_message_content += "<attached_media>\n"
+            system_message_content += "You have the following media attached to your message:\n"
+            if audio is not None and len(audio) > 0:
+                system_message_content += " - Audio\n"
+            if images is not None and len(images) > 0:
+                system_message_content += " - Images\n"
+            if videos is not None and len(videos) > 0:
+                system_message_content += " - Videos\n"
+            if files is not None and len(files) > 0:
+                system_message_content += " - Files\n"
+            system_message_content += "</attached_media>\n\n"
+
+        if self.expected_output is not None:
+            system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
+
+        # Format the system message with the session state variables
+        if self.add_state_in_messages:
+            system_message_content = self._format_message_with_state_variables(system_message_content, user_id=user_id)
 
         # Add the JSON output prompt if response_model is provided and structured_outputs is False
         if (

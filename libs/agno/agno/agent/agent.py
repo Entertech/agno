@@ -2759,16 +2759,6 @@ class Agent:
             for _ti in self._tool_instructions:
                 system_message_content += f"{_ti}\n"
 
-        # Format the system message with the session state variables
-        if self.add_state_in_messages:
-            system_message_content = self.format_message_with_state_variables(system_message_content)
-
-        # 3.3.7 Then add the expected output
-        if self.expected_output is not None:
-            system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
-        # 3.3.8 Then add additional context
-        if self.additional_context is not None:
-            system_message_content += f"{self.additional_context}\n"
         # 3.3.9 Then add information about the team members
         if self.has_team and self.add_transfer_instructions:
             system_message_content += (
@@ -2861,6 +2851,18 @@ class Agent:
         system_message_from_model = self.model.get_system_message_for_model()
         if system_message_from_model is not None:
             system_message_content += system_message_from_model
+
+        # 3.3.8 Then add additional context
+        if self.additional_context is not None:
+            system_message_content += f"{self.additional_context}\n"
+
+        # 3.3.7 Then add the expected output
+        if self.expected_output is not None:
+            system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
+
+        # Format the system message with the session state variables
+        if self.add_state_in_messages:
+            system_message_content = self.format_message_with_state_variables(system_message_content)
 
         # 3.3.13 Add the JSON output prompt if response_model is provided and the model does not support native structured outputs or JSON schema outputs
         # or if use_json_mode is True
