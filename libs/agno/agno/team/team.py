@@ -76,7 +76,7 @@ class Team:
 
     members: List[Union[Agent, "Team"]]
 
-    mode: Literal["route", "coordinate", "collaborate"] = "coordinate"
+    mode: Literal["route", "coordinate", "collaborate", "direct"] = "coordinate"
 
     # Model for this Team
     model: Optional[Model] = None
@@ -200,6 +200,8 @@ class Team:
     enable_session_summaries: bool = False
     # If True, the agent adds a reference to the session summaries in the response
     add_session_summary_references: Optional[bool] = None
+    # If True, the agent creates/updates user memories asynchronously
+    make_user_memories_create_and_update_async: bool = False
 
     # --- Team History ---
     # If True, enable the team history
@@ -234,7 +236,7 @@ class Team:
     def __init__(
         self,
         members: List[Union[Agent, "Team"]],
-        mode: Literal["route", "coordinate", "collaborate"] = "coordinate",
+        mode: Literal["route", "coordinate", "collaborate", "direct"] = "coordinate",
         model: Optional[Model] = None,
         name: Optional[str] = None,
         team_id: Optional[str] = None,
@@ -277,6 +279,7 @@ class Team:
         add_memory_references: Optional[bool] = None,
         enable_session_summaries: bool = False,
         add_session_summary_references: Optional[bool] = None,
+        make_user_memories_create_and_update_async: bool = False,
         enable_team_history: bool = False,
         num_of_interactions_from_history: Optional[int] = None,
         num_history_runs: int = 3,
@@ -345,7 +348,7 @@ class Team:
         self.add_memory_references = add_memory_references
         self.enable_session_summaries = enable_session_summaries
         self.add_session_summary_references = add_session_summary_references
-
+        self.make_user_memories_create_and_update_async = make_user_memories_create_and_update_async
         self.enable_team_history = enable_team_history
         self.num_of_interactions_from_history = num_of_interactions_from_history
         self.num_history_runs = num_history_runs
@@ -389,6 +392,8 @@ class Team:
         self._member_response_model: Optional[Type[BaseModel]] = None
 
         self._formatter: Optional[SafeFormatter] = None
+
+        self.is_conversation_over: bool = False
 
     def _set_team_id(self) -> str:
         if self.team_id is None:
@@ -668,6 +673,21 @@ class Team:
             elif self.mode == "coordinate":
                 _tools.append(
                     self.get_transfer_task_function(
+                        session_id=session_id,
+                        stream=stream,
+                        async_mode=False,
+                        images=images,  # type: ignore
+                        videos=videos,  # type: ignore
+                        audio=audio,  # type: ignore
+                        files=files,  # type: ignore
+                    )
+                )
+                if self.get_member_information_tool:
+                    _tools.append(self.get_member_information)
+
+            elif self.mode == "direct":
+                _tools.append(
+                    self.get_direct_task_function(
                         session_id=session_id,
                         stream=stream,
                         async_mode=False,
@@ -1462,6 +1482,22 @@ class Team:
 
                 if self.enable_agentic_context:
                     _tools.append(self.get_set_shared_context_function(session_id=session_id))
+            elif self.mode == "direct":
+                _tools.append(
+                    self.get_direct_task_function(
+                        session_id=session_id,
+                        stream=stream,
+                        async_mode=True,
+                        images=images,  # type: ignore
+                        videos=videos,  # type: ignore
+                        audio=audio,  # type: ignore
+                        files=files,  # type: ignore
+                    )
+                )
+                self.model.tool_choice = "auto"  # type: ignore
+
+                if self.enable_agentic_context:
+                    _tools.append(self.get_set_shared_context_function(session_id=session_id))
             elif self.mode == "collaborate":
                 run_member_agents_func = self.get_run_member_agents_function(
                     session_id=session_id,
@@ -1692,11 +1728,16 @@ class Team:
                 )
                 self.write_to_storage(session_id=session_id, user_id=user_id)
 
-            asyncio.create_task(
-                _amake_memories_and_summaries(
+            if self.make_user_memories_create_and_update_async:
+                asyncio.create_task(
+                    _amake_memories_and_summaries(
+                        run_messages, session_id, user_id
+                    )
+                )
+            else:
+                await _amake_memories_and_summaries(
                     run_messages, session_id, user_id
                 )
-            )
 
             session_messages: List[Message] = []
             for run in self.memory.runs.get(session_id, []):
@@ -1875,27 +1916,26 @@ class Team:
                             session_id=session_id,
                         )
                 else:
-                    if not self.show_tool_calls_details:
-                        # Add tool calls to the run_response
-                        new_tool_calls_list = model_response_chunk.tool_calls
-                        if new_tool_calls_list is not None:
-                            # Add tool calls to the agent.run_response
-                            if run_response.tools is None:
-                                run_response.tools = new_tool_calls_list
-                            else:
-                                run_response.tools.extend(new_tool_calls_list)
+                    # Add tool calls to the run_response
+                    new_tool_calls_list = model_response_chunk.tool_calls
+                    if new_tool_calls_list is not None:
+                        # Add tool calls to the agent.run_response
+                        if run_response.tools is None:
+                            run_response.tools = new_tool_calls_list
+                        else:
+                            run_response.tools.extend(new_tool_calls_list)
 
-                        # Format tool calls whenever new ones are added during streaming
-                        run_response.formatted_tool_calls = format_tool_calls(run_response.tools)
+                    # Format tool calls whenever new ones are added during streaming
+                    run_response.formatted_tool_calls = format_tool_calls(run_response.tools)
 
-                        # Only yield the event if streaming intermediate steps
-                        if stream_intermediate_steps:
-                            yield self._create_run_response(
-                                content=model_response_chunk.content,
-                                event=RunEvent.tool_call_started,
-                                from_run_response=run_response,
-                                session_id=session_id,
-                            )
+                    # Only yield the event if streaming intermediate steps
+                    if stream_intermediate_steps:
+                        yield self._create_run_response(
+                            content=model_response_chunk.content,
+                            event=RunEvent.tool_call_started,
+                            from_run_response=run_response,
+                            session_id=session_id,
+                        )
 
             # If the model response is a tool_call_completed, update the existing tool call in the run_response
             elif model_response_chunk.event == ModelResponseEvent.tool_call_completed.value:
@@ -1912,72 +1952,71 @@ class Team:
                             session_id=session_id,
                         )
                 else:
-                    if not self.show_tool_calls_details:
-                        reasoning_step: Optional[ReasoningStep] = None
-                        new_tool_calls_list = model_response_chunk.tool_calls
-                        if new_tool_calls_list is not None:
-                            # Update the existing tool call in the run_response
-                            if run_response.tools:
-                                # Create a mapping of tool_call_id to index
-                                tool_call_index_map = {
-                                    tc["tool_call_id"]: i
-                                    for i, tc in enumerate(run_response.tools)
-                                    if tc.get("tool_call_id") is not None
-                                }
-                                # Process tool calls
-                                for tool_call_dict in new_tool_calls_list:
-                                    tool_call_id = tool_call_dict.get("tool_call_id")
-                                    index = tool_call_index_map.get(tool_call_id)
-                                    if index is not None:
-                                        run_response.tools[index] = tool_call_dict
+                    reasoning_step: Optional[ReasoningStep] = None
+                    new_tool_calls_list = model_response_chunk.tool_calls
+                    if new_tool_calls_list is not None:
+                        # Update the existing tool call in the run_response
+                        if run_response.tools:
+                            # Create a mapping of tool_call_id to index
+                            tool_call_index_map = {
+                                tc["tool_call_id"]: i
+                                for i, tc in enumerate(run_response.tools)
+                                if tc.get("tool_call_id") is not None
+                            }
+                            # Process tool calls
+                            for tool_call_dict in new_tool_calls_list:
+                                tool_call_id = tool_call_dict.get("tool_call_id")
+                                index = tool_call_index_map.get(tool_call_id)
+                                if index is not None:
+                                    run_response.tools[index] = tool_call_dict
+                        else:
+                            run_response.tools = new_tool_calls_list
+
+                        # Only iterate through new tool calls
+                        for tool_call in new_tool_calls_list:
+                            tool_name = tool_call.get("tool_name", "")
+                            if tool_name.lower() in ["think", "analyze"]:
+                                tool_args = tool_call.get("tool_args", {})
+
+                                reasoning_step = self.update_reasoning_content_from_tool_call(
+                                    run_response, tool_name, tool_args
+                                )
+
+                                metrics = tool_call.get("metrics")
+                                if metrics is not None:
+                                    reasoning_time_taken = reasoning_time_taken + float(metrics.time)
+
+                        if stream_intermediate_steps:
+                            if reasoning_step is not None:
+                                if not reasoning_started:
+                                    yield self._create_run_response(
+                                        content="Reasoning started",
+                                        session_id=session_id,
+                                        event=RunEvent.reasoning_started,
+                                    )
+                                    reasoning_started = True
+
+                                yield self._create_run_response(
+                                    content=reasoning_step,
+                                    content_type=reasoning_step.__class__.__name__,
+                                    event=RunEvent.reasoning_step,
+                                    reasoning_content=run_response.reasoning_content,
+                                    session_id=session_id,
+                                )
+
+                            if not self.show_tool_calls_details:
+                                yield self._create_run_response(
+                                    content=model_response_chunk.content,
+                                    event=RunEvent.tool_call_completed,
+                                    session_id=session_id,
+                                )
                             else:
-                                run_response.tools = new_tool_calls_list
-
-                            # Only iterate through new tool calls
-                            for tool_call in new_tool_calls_list:
-                                tool_name = tool_call.get("tool_name", "")
-                                if tool_name.lower() in ["think", "analyze"]:
-                                    tool_args = tool_call.get("tool_args", {})
-
-                                    reasoning_step = self.update_reasoning_content_from_tool_call(
-                                        run_response, tool_name, tool_args
-                                    )
-
-                                    metrics = tool_call.get("metrics")
-                                    if metrics is not None:
-                                        reasoning_time_taken = reasoning_time_taken + float(metrics.time)
-
-                            if stream_intermediate_steps:
-                                if reasoning_step is not None:
-                                    if not reasoning_started:
-                                        yield self._create_run_response(
-                                            content="Reasoning started",
-                                            session_id=session_id,
-                                            event=RunEvent.reasoning_started,
-                                        )
-                                        reasoning_started = True
-
-                                    yield self._create_run_response(
-                                        content=reasoning_step,
-                                        content_type=reasoning_step.__class__.__name__,
-                                        event=RunEvent.reasoning_step,
-                                        reasoning_content=run_response.reasoning_content,
-                                        session_id=session_id,
-                                    )
-
-                                if self.show_tool_calls_details:
-                                    yield self._create_run_response(
-                                        content=model_response_chunk.content,
-                                        event=RunEvent.tool_call_started,
-                                        session_id=session_id,
-                                    )
-                                else:
-                                    yield self._create_run_response(
-                                        content=model_response_chunk.content,
-                                        event=RunEvent.tool_call_started,
-                                        from_run_response=run_response,
-                                        session_id=session_id,
-                                    )
+                                yield self._create_run_response(
+                                    content=model_response_chunk.content,
+                                    event=RunEvent.tool_call_completed,
+                                    from_run_response=run_response,
+                                    session_id=session_id,
+                                )
             elif self.show_tool_calls_details and model_response_chunk.event == RunEvent.run_response.value:
                 yield self._create_run_response(
                     content=model_response_chunk.content,
@@ -2071,11 +2110,17 @@ class Team:
                 )
                 self.write_to_storage(session_id=session_id, user_id=user_id)
 
-            asyncio.create_task(
-                _amake_memories_and_summaries(
+            self.is_conversation_over = False
+            if self.make_user_memories_create_and_update_async:
+                asyncio.create_task(
+                    _amake_memories_and_summaries(
+                        run_messages, session_id, user_id
+                    )
+                )
+            else:
+                await _amake_memories_and_summaries(
                     run_messages, session_id, user_id
                 )
-            )
 
             session_messages: List[Message] = []
             for run in self.memory.runs.get(session_id, []):  # type: ignore
@@ -2088,6 +2133,7 @@ class Team:
 
         # 6. Save session to storage
         self.write_to_storage(session_id=session_id, user_id=user_id)
+        self.is_conversation_over = True
 
         # Log Team Run
         await self._alog_team_run(session_id=session_id, user_id=user_id)
@@ -2119,6 +2165,9 @@ class Team:
     async def _amake_memories_and_summaries(
         self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None
     ) -> None:
+        while not self.is_conversation_over and self.make_user_memories_create_and_update_async:
+            await asyncio.sleep(0.1)
+
         self.memory = cast(Memory, self.memory)
         user_message_str = (
             run_messages.user_message.get_content_string() if run_messages.user_message is not None else None
@@ -2128,7 +2177,8 @@ class Team:
                 # 获取对话历史
                 conversation_history = self.storage.read(session_id=session_id, user_id=user_id)
                 # 获取最后一轮对话
-                last_message = conversation_history.memory["runs"][-1]["member_responses"][-1] if conversation_history is not None else None
+                member_responses = conversation_history.memory["runs"][-1]["member_responses"]
+                last_message = member_responses[-1] if member_responses else None
                 if last_message is not None:
                     # 获取最后一轮对话的图片
                     last_message_images = [img.url for img in run_messages.user_message.images]
@@ -4615,6 +4665,16 @@ class Team:
                 "- After analyzing the responses from the members, if you feel the task has been completed, you can stop and respond to the user.\n"
                 "- If you are not satisfied with the responses from the members, you should re-assign the task.\n"
             )
+        elif self.mode == "direct":
+            system_message_content += (
+                "- You can either respond directly or transfer tasks to members in your team with the highest likelihood of completing the user's request.\n"
+                "- Carefully analyze the tools available to the members and their roles before transferring tasks.\n"
+                "- You cannot use a member tool directly. You can only transfer tasks to members.\n"
+                "- When you transfer a task to another member, make sure to include:\n"
+                "  - member_id (str): The ID of the member to forward the task to.\n"
+                "  - task_description (str): A clear description of the task.\n"
+                "  - expected_output (str): The expected output.\n"
+            )
         elif self.mode == "route":
             system_message_content += (
                 "- You can either respond directly or forward tasks to members in your team with the highest likelihood of completing the user's request.\n"
@@ -5763,6 +5823,331 @@ class Team:
         transfer_func = Function.from_callable(transfer_function, strict=True)
 
         return transfer_func
+
+    def get_direct_task_function(
+        self,
+        session_id: str,
+        stream: bool = False,
+        async_mode: bool = False,
+        images: Optional[List[Image]] = None,
+        videos: Optional[List[Video]] = None,
+        audio: Optional[List[Audio]] = None,
+        files: Optional[List[File]] = None,
+    ) -> Function:
+        if not images:
+            images = []
+        if not videos:
+            videos = []
+        if not audio:
+            audio = []
+        if not files:
+            files = []
+
+        def direct_task_to_member(
+            member_id: str, task_description: str, expected_output: Optional[str] = None
+        ) -> Iterator[str]:
+            """Use this function to direct a task to the selected team member.
+            You must provide a clear and concise description of the task the member should achieve AND the expected output.
+
+            Args:
+                member_id (str): The ID of the member to direct the task to.
+                task_description (str): A clear and concise description of the task the member should achieve.
+                expected_output (str): The expected output from the member (optional).
+            Returns:
+                str: The result of the delegated task.
+            """
+
+            # Find the member agent using the helper function
+            result = self._find_member_by_id(member_id)
+            if result is None:
+                yield f"Member with ID {member_id} not found in the team or any subteams. Please choose the correct member from the list of members:\n\n{self.get_members_system_message_content(indent=0)}"
+                return
+
+            member_agent_index, member_agent = result
+            self._initialize_member(member_agent, session_id=session_id)
+
+            # 2. Determine team context to send
+            if isinstance(self.memory, TeamMemory):
+                self.memory = cast(TeamMemory, self.memory)
+                team_context_str = None
+                if self.enable_agentic_context:
+                    team_context_str = self.memory.get_team_context_str()
+
+                team_member_interactions_str = None
+                if self.share_member_interactions:
+                    team_member_interactions_str = self.memory.get_team_member_interactions_str()
+                    if context_images := self.memory.get_team_context_images():
+                        images.extend([Image.from_artifact(img) for img in context_images])
+                    if context_videos := self.memory.get_team_context_videos():
+                        videos.extend([Video.from_artifact(vid) for vid in context_videos])
+                    if context_audio := self.memory.get_team_context_audio():
+                        audio.extend([Audio.from_artifact(aud) for aud in context_audio])
+            else:
+                self.memory = cast(Memory, self.memory)
+                team_context_str = None
+                if self.enable_agentic_context:
+                    team_context_str = self.memory.get_team_context_str(session_id=session_id)  # type: ignore
+
+                team_member_interactions_str = None
+                if self.share_member_interactions:
+                    team_member_interactions_str = self.memory.get_team_member_interactions_str(session_id=session_id)  # type: ignore
+                    if context_images := self.memory.get_team_context_images(session_id=session_id):  # type: ignore
+                        images.extend([Image.from_artifact(img) for img in context_images])
+                    if context_videos := self.memory.get_team_context_videos(session_id=session_id):  # type: ignore
+                        videos.extend([Video.from_artifact(vid) for vid in context_videos])
+                    if context_audio := self.memory.get_team_context_audio(session_id=session_id):  # type: ignore
+                        audio.extend([Audio.from_artifact(aud) for aud in context_audio])
+
+            # 3. Create the member agent task
+            member_agent_task = "You are a member of a team of agents. Your goal is to complete the following task:"
+            member_agent_task += f"\n\n<task>\n{task_description}\n</task>"
+
+            if expected_output is not None:
+                member_agent_task += f"\n\n<expected_output>\n{expected_output}\n</expected_output>"
+
+            if team_context_str:
+                member_agent_task += f"\n\n{team_context_str}"
+            if team_member_interactions_str:
+                member_agent_task += f"\n\n{team_member_interactions_str}"
+
+            # Make sure for the member agent, we are using the agent logger
+            use_agent_logger()
+
+            if stream:
+                member_agent_run_response_stream = member_agent.run(
+                    member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=True
+                )
+                for member_agent_run_response_chunk in member_agent_run_response_stream:
+                    check_if_run_cancelled(member_agent_run_response_chunk)
+                    if member_agent_run_response_chunk.content is not None:
+                        yield member_agent_run_response_chunk.content
+                    elif (
+                        member_agent_run_response_chunk.tools is not None
+                        and len(member_agent_run_response_chunk.tools) > 0
+                    ):
+                        yield ",".join([tool.get("content", "") for tool in member_agent_run_response_chunk.tools])
+            else:
+                member_agent_run_response = member_agent.run(
+                    member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=False
+                )
+
+                check_if_run_cancelled(member_agent_run_response)
+
+                if member_agent_run_response.content is None and (
+                    member_agent_run_response.tools is None or len(member_agent_run_response.tools) == 0
+                ):
+                    yield "No response from the member agent."
+                elif isinstance(member_agent_run_response.content, str):
+                    if len(member_agent_run_response.content.strip()) > 0:
+                        yield member_agent_run_response.content
+
+                    # If the content is empty but we have tool calls
+                    elif member_agent_run_response.tools is not None and len(member_agent_run_response.tools) > 0:
+                        yield ",".join([tool.get("content", "") for tool in member_agent_run_response.tools])
+
+                elif issubclass(type(member_agent_run_response.content), BaseModel):
+                    try:
+                        yield member_agent_run_response.content.model_dump_json(indent=2)  # type: ignore
+                    except Exception as e:
+                        yield str(e)
+                else:
+                    try:
+                        import json
+
+                        yield json.dumps(member_agent_run_response.content, indent=2)
+                    except Exception as e:
+                        yield str(e)
+
+            # Afterward, switch back to the team logger
+            use_team_logger()
+
+            # Update the memory
+            member_name = member_agent.name if member_agent.name else f"agent_{member_agent_index}"
+
+            if isinstance(self.memory, TeamMemory):
+                self.memory = cast(TeamMemory, self.memory)
+                self.memory.add_interaction_to_team_context(
+                    member_name=member_name,
+                    task=task_description,
+                    run_response=member_agent.run_response,  # type: ignore
+                )
+            else:
+                self.memory = cast(Memory, self.memory)
+                self.memory.add_interaction_to_team_context(
+                    session_id=session_id,
+                    member_name=member_name,
+                    task=task_description,
+                    run_response=member_agent.run_response,  # type: ignore
+                )
+
+            # Add the member run to the team run response
+            self.run_response = cast(TeamRunResponse, self.run_response)
+            self.run_response.add_member_run(member_agent.run_response)  # type: ignore
+
+            # Update team session state
+            self._update_team_session_state(member_agent)
+
+            # Update the team media
+            self._update_team_media(member_agent.run_response)  # type: ignore
+
+        async def adirect_task_to_member(
+            member_id: str, task_description: str, expected_output: Optional[str] = None
+        ) -> AsyncIterator[str]:
+            """Use this function to direct a task to the selected team member.
+            You must provide a clear and concise description of the task the member should achieve AND the expected output.
+
+            Args:
+                member_id (str): The ID of the member to direct the task to.
+                task_description (str): A clear and concise description of the task the member should achieve.
+                expected_output (str): The expected output from the member (optional).
+            Returns:
+                str: The result of the delegated task.
+            """
+
+            # Find the member agent using the helper function
+            result = self._find_member_by_id(member_id)
+            if result is None:
+                yield f"Member with ID {member_id} not found in the team or any subteams. Please choose the correct member from the list of members:\n\n{self.get_members_system_message_content(indent=0)}"
+                return
+
+            member_agent_index, member_agent = result
+            self._initialize_member(member_agent, session_id=session_id)
+
+            # 2. Determine team context to send
+            if isinstance(self.memory, TeamMemory):
+                self.memory = cast(TeamMemory, self.memory)
+                team_context_str = None
+                if self.enable_agentic_context:
+                    team_context_str = self.memory.get_team_context_str()
+
+                team_member_interactions_str = None
+                if self.share_member_interactions:
+                    team_member_interactions_str = self.memory.get_team_member_interactions_str()
+                    if context_images := self.memory.get_team_context_images():
+                        images.extend([Image.from_artifact(img) for img in context_images])
+                    if context_videos := self.memory.get_team_context_videos():
+                        videos.extend([Video.from_artifact(vid) for vid in context_videos])
+                    if context_audio := self.memory.get_team_context_audio():
+                        audio.extend([Audio.from_artifact(aud) for aud in context_audio])
+            else:
+                self.memory = cast(Memory, self.memory)
+                team_context_str = None
+                if self.enable_agentic_context:
+                    team_context_str = self.memory.get_team_context_str(session_id=session_id)  # type: ignore
+
+                team_member_interactions_str = None
+                if self.share_member_interactions:
+                    team_member_interactions_str = self.memory.get_team_member_interactions_str(session_id=session_id)  # type: ignore
+                    if context_images := self.memory.get_team_context_images(session_id=session_id):  # type: ignore
+                        images.extend([Image.from_artifact(img) for img in context_images])
+                    if context_videos := self.memory.get_team_context_videos(session_id=session_id):  # type: ignore
+                        videos.extend([Video.from_artifact(vid) for vid in context_videos])
+                    if context_audio := self.memory.get_team_context_audio(session_id=session_id):  # type: ignore
+                        audio.extend([Audio.from_artifact(aud) for aud in context_audio])
+
+            # 3. Create the member agent task
+            member_agent_task = "You are a member of a team of agents. Your goal is to complete the following task:"
+            member_agent_task += f"\n\n<task>\n{task_description}\n</task>"
+
+            if expected_output is not None:
+                member_agent_task += f"\n\n<expected_output>\n{expected_output}\n</expected_output>"
+
+            if team_context_str:
+                member_agent_task += f"\n\n{team_context_str}"
+            if team_member_interactions_str:
+                member_agent_task += f"\n\n{team_member_interactions_str}"
+
+            # Make sure for the member agent, we are using the agent logger
+            use_agent_logger()
+
+            if stream:
+                member_agent_run_response_stream = await member_agent.arun(
+                    member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=True
+                )
+                async for member_agent_run_response_chunk in member_agent_run_response_stream:
+                    check_if_run_cancelled(member_agent_run_response_chunk)
+                    if member_agent_run_response_chunk.content is not None:
+                        yield member_agent_run_response_chunk.content
+                    elif (
+                        member_agent_run_response_chunk.tools is not None
+                        and len(member_agent_run_response_chunk.tools) > 0
+                    ):
+                        yield ",".join([tool.get("content", "") for tool in member_agent_run_response_chunk.tools])
+            else:
+                member_agent_run_response = await member_agent.arun(
+                    member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=False
+                )
+                check_if_run_cancelled(member_agent_run_response)
+
+                if member_agent_run_response.content is None and (
+                    member_agent_run_response.tools is None or len(member_agent_run_response.tools) == 0
+                ):
+                    yield "No response from the member agent."
+                elif isinstance(member_agent_run_response.content, str):
+                    if len(member_agent_run_response.content.strip()) > 0:
+                        yield member_agent_run_response.content
+
+                    # If the content is empty but we have tool calls
+                    elif member_agent_run_response.tools is not None and len(member_agent_run_response.tools) > 0:
+                        yield ",".join([tool.get("content", "") for tool in member_agent_run_response.tools])
+                elif issubclass(type(member_agent_run_response.content), BaseModel):
+                    try:
+                        yield member_agent_run_response.content.model_dump_json(indent=2)  # type: ignore
+                    except Exception as e:
+                        yield str(e)
+                else:
+                    try:
+                        import json
+
+                        yield json.dumps(member_agent_run_response.content, indent=2)
+                    except Exception as e:
+                        yield str(e)
+
+            # Afterward, switch back to the team logger
+            use_team_logger()
+
+            # Update the memory
+            member_name = member_agent.name if member_agent.name else f"agent_{member_agent_index}"
+            if isinstance(self.memory, TeamMemory):
+                self.memory = cast(TeamMemory, self.memory)
+                self.memory.add_interaction_to_team_context(
+                    member_name=member_name,
+                    task=task_description,
+                    run_response=member_agent.run_response,  # type: ignore
+                )
+            else:
+                self.memory = cast(Memory, self.memory)
+                self.memory.add_interaction_to_team_context(
+                    session_id=session_id,
+                    member_name=member_name,
+                    task=task_description,
+                    run_response=member_agent.run_response,  # type: ignore
+                )
+
+            # Add the member run to the team run response
+            self.run_response = cast(TeamRunResponse, self.run_response)
+            self.run_response.add_member_run(member_agent.run_response)  # type: ignore
+
+            # Update team session state
+            self._update_team_session_state(member_agent)
+
+            # Update the team media
+            self._update_team_media(member_agent.run_response)  # type: ignore
+
+        if async_mode:
+            direct_function = adirect_task_to_member  # type: ignore
+        else:
+            direct_function = direct_task_to_member  # type: ignore
+
+        direct_func = Function.from_callable(direct_function, strict=True)
+
+        for member in self.members:
+            if member.respond_directly:
+                direct_func.stop_after_tool_call = True
+                direct_func.show_result = True
+                break
+
+        return direct_func
 
     def _get_member_id(self, member: Union[Agent, "Team"]) -> str:
         """

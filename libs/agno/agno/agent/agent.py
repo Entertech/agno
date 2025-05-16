@@ -3296,6 +3296,10 @@ class Agent:
                 member_agent_run_response_stream = member_agent.run(member_agent_task, stream=True)
                 for member_agent_run_response_chunk in member_agent_run_response_stream:
                     yield member_agent_run_response_chunk.content  # type: ignore
+                    # if self.show_tool_calls_details:
+                    yield member_agent_run_response_chunk or ModelResponse()
+                    # else:
+                    #     yield member_agent_run_response_chunk.content or ""
             else:
                 member_agent_run_response: RunResponse = member_agent.run(member_agent_task, stream=False)
                 if member_agent_run_response.content is None:
