@@ -2177,7 +2177,7 @@ class Team:
                 # 获取对话历史
                 conversation_history = self.storage.read(session_id=session_id, user_id=user_id)
                 # 获取最后一轮对话
-                member_responses = conversation_history.memory["runs"][-1]["member_responses"]
+                member_responses = conversation_history.memory["runs"][-1]["member_responses"] if conversation_history is not None else None
                 last_message = member_responses[-1] if member_responses else None
                 if last_message is not None:
                     # 获取最后一轮对话的图片
