@@ -1960,7 +1960,7 @@ class Agent:
                 # 获取对话历史
                 conversation_history = self.storage.read(session_id=session_id, user_id=user_id)
                 # 获取最后一轮对话
-                last_messages = conversation_history.memory["runs"][-1]["messages"] if conversation_history is not None else None
+                last_messages = conversation_history.memory["runs"][-1]["messages"] if conversation_history is not None else []
                 last_message_images_str = ""
                 last_message_answer = ""
                 last_message_query = ""
