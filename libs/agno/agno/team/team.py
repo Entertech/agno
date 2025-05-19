@@ -4728,13 +4728,15 @@ class Team:
 
         # 3.3.7 Then add instructions for the tools
         if self._tool_instructions is not None:
+            system_message_content += "<tools_instructions>\n"
             for _ti in self._tool_instructions:
-                system_message_content += f"{_ti}\n"
+                system_message_content += f"{_ti}\n\n"
+            system_message_content += "</tools_instructions>\n\n"
 
         system_message_from_model = self.model.get_system_message_for_model()
         if system_message_from_model is not None:
             system_message_content += system_message_from_model
-编排
+
         # Then add memories to the system prompt
         if self.memory:
             if isinstance(self.memory, Memory) and (self.add_memory_references):
@@ -4742,16 +4744,35 @@ class Team:
                     user_id = "default"
                 user_memories = self.memory.memories.get(user_id, {})  # type: ignore
                 if user_memories and len(user_memories) > 0:
+                    system_message_content += "<memories_from_previous_interactions>\n"
                     system_message_content += (
                         "You have access to memories from previous interactions with the user that you can use:\n\n"
                     )
-                    system_message_content += "<memories_from_previous_interactions>"
-                    for _memory in user_memories.values():  # type: ignore
-                        system_message_content += f"\n- {_memory.memory}"
+                    system_message_content += "<reminders>\n"
+                    system_message_content += "Title | Datetime | Status\n"
+                    system_message_content += "---|---|---\n"
+                    for _memory in [m for m in user_memories if "Reminders" in m.topics]:  # type: ignore
+                        system_message_content += (
+                            f"{_memory.memory}|{_memory.datetime_at.strftime('%Y-%m-%d %H:%M:%S')}|{_memory.status}\n"
+                        )
+                    system_message_content += "</reminders>\n"
+                    system_message_content += "<notes>\n"
+                    for _memory in [m for m in user_memories if "Notes" in m.topics]:  # type: ignore
+                        system_message_content += (
+                            f"- {_memory.memory}\n"
+                        )
+                    system_message_content += "</notes>\n"
+                    system_message_content += "<personal_preferences>\n"
+                    for _memory in [m for m in user_memories if "Reminders" not in m.topics and "Notes" not in m.topics]:  # type: ignore
+                        system_message_content += (
+                            f"- {_memory.memory}\n"
+                        )
+                    system_message_content += "</personal_preferences>\n"
+
                     system_message_content += "\n</memories_from_previous_interactions>\n\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be updated in this conversation. "
-                        "You should always prefer information from this conversation over the past memories.\n\n"
+                        "You should always prefer information from this conversation over the past memories.\n"
                     )
                 else:
                     system_message_content += (

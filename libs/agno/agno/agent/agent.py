@@ -1347,6 +1347,7 @@ class Agent:
                         or model_response_chunk.redacted_thinking is not None
                         or model_response_chunk.citations is not None
                     ):
+                        self.run_response.tools = []
                         yield self.create_run_response(
                             content=model_response_chunk.content,
                             thinking=model_response_chunk.thinking,
@@ -1394,7 +1395,7 @@ class Agent:
                 # If the model response is a tool_call_started, add the tool call to the run_response
                 elif model_response_chunk.event == ModelResponseEvent.tool_call_started.value:
                     # Add tool calls to the run_response
-                    new_tool_calls_list = model_response_chunk.tool_calls
+                    new_tool_calls_list = model_response_chunk.tool_calls if hasattr(model_response_chunk, "tool_calls") else None
                     if new_tool_calls_list is not None:
                         # Add tool calls to the agent.run_response
                         if self.run_response.tools is None:
@@ -1406,9 +1407,16 @@ class Agent:
                         self.run_response.formatted_tool_calls = format_tool_calls(self.run_response.tools)
 
                     # If the agent is streaming intermediate steps, yield a RunResponse with the tool_call_started event
+                    # if self.stream_intermediate_steps:
+                    #     yield self.create_run_response(
+                    #         content=model_response_chunk.content,
+                    #         event=RunEvent.tool_call_started,
+                    #         session_id=session_id,
+                    #     )
+                    model_response_chunk.content = ""
                     if self.stream_intermediate_steps:
                         yield self.create_run_response(
-                            content=model_response_chunk.content,
+                            content="",
                             event=RunEvent.tool_call_started,
                             session_id=session_id,
                         )
@@ -1416,7 +1424,7 @@ class Agent:
                 # If the model response is a tool_call_completed, update the existing tool call in the run_response
                 elif model_response_chunk.event == ModelResponseEvent.tool_call_completed.value:
                     reasoning_step: Optional[ReasoningStep] = None
-                    new_tool_calls_list = model_response_chunk.tool_calls
+                    new_tool_calls_list = model_response_chunk.tool_calls if hasattr(model_response_chunk, "tool_calls") else None
                     if new_tool_calls_list is not None:
                         # Update the existing tool call in the run_response
                         if self.delete_tool_metrics_in_run_response:
@@ -1467,11 +1475,27 @@ class Agent:
                                 reasoning_content=self.run_response.reasoning_content,
                             )
 
-                        yield self.create_run_response(
-                            content=model_response_chunk.content,
-                            event=RunEvent.tool_call_completed,
-                            session_id=session_id,
-                        )
+                        # yield self.create_run_response(
+                        #     content=model_response_chunk.content,
+                        #     event=RunEvent.tool_call_completed,
+                        #     session_id=session_id,
+                        # )
+                        model_response_chunk.content = ""
+                        if self.stream_intermediate_steps:
+                            yield self.create_run_response(
+                                content="",
+                                event=RunEvent.tool_call_completed,
+                                session_id=session_id,
+                            )
+                elif model_response_chunk.event == RunEvent.run_response.value:
+                    self.run_response.tools = []
+                    self.run_response.formatted_tool_calls = []
+                    self.run_response.tools = []
+                    yield self.create_run_response(
+                        content=model_response_chunk.content,
+                        event=RunEvent.run_response,
+                        session_id=session_id,
+                    )
         else:
             # Get the model response
             model_response = await self.model.aresponse(messages=run_messages.messages)
@@ -2756,8 +2780,10 @@ class Agent:
             system_message_content += "\n</additional_information>\n\n"
         # 3.3.7 Then add instructions for the tools
         if self._tool_instructions is not None:
+            system_message_content += "<tools_instructions>\n"
             for _ti in self._tool_instructions:
-                system_message_content += f"{_ti}\n"
+                system_message_content += f"{_ti}\n\n"
+            system_message_content += "</tools_instructions>\n\n"
 
         # 3.3.9 Then add information about the team members
         if self.has_team and self.add_transfer_instructions:
@@ -2793,12 +2819,31 @@ class Agent:
                     user_id = "default"
                 user_memories = self.memory.get_user_memories(user_id=user_id)  # type: ignore
                 if user_memories and len(user_memories) > 0:
+                    system_message_content += "<memories_from_previous_interactions>\n"
                     system_message_content += (
                         "You have access to memories from previous interactions with the user that you can use:\n\n"
                     )
-                    system_message_content += "<memories_from_previous_interactions>"
-                    for _memory in user_memories:  # type: ignore
-                        system_message_content += f"\n- {_memory.memory}"
+                    system_message_content += "<reminders>\n"
+                    system_message_content += "Title | Datetime | Status\n"
+                    system_message_content += "---|---|---\n"
+                    for _memory in [m for m in user_memories if "Reminders" in m.topics]:  # type: ignore
+                        system_message_content += (
+                            f"{_memory.memory}|{_memory.datetime_at.strftime('%Y-%m-%d %H:%M:%S')}|{_memory.status}\n"
+                        )
+                    system_message_content += "</reminders>\n"
+                    system_message_content += "<notes>\n"
+                    for _memory in [m for m in user_memories if "Notes" in m.topics]:  # type: ignore
+                        system_message_content += (
+                            f"- {_memory.memory}\n"
+                        )
+                    system_message_content += "</notes>\n"
+                    system_message_content += "<personal_preferences>\n"
+                    for _memory in [m for m in user_memories if "Reminders" not in m.topics and "Notes" not in m.topics]:  # type: ignore
+                        system_message_content += (
+                            f"- {_memory.memory}\n"
+                        )
+                    system_message_content += "</personal_preferences>\n"
+
                     system_message_content += "\n</memories_from_previous_interactions>\n\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be updated in this conversation. "
@@ -3297,7 +3342,7 @@ class Agent:
             if self.stream and member_agent.is_streamable:
                 member_agent_run_response_stream = member_agent.run(member_agent_task, stream=True)
                 for member_agent_run_response_chunk in member_agent_run_response_stream:
-                    yield member_agent_run_response_chunk.content  # type: ignore
+                    # yield member_agent_run_response_chunk.content  # type: ignore
                     # if self.show_tool_calls_details:
                     yield member_agent_run_response_chunk or ModelResponse()
                     # else:
