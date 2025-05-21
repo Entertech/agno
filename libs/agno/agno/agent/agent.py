@@ -652,7 +652,7 @@ class Agent:
 
         # 6. Start the Run by yielding a RunStarted event
         if self.stream_intermediate_steps:
-            yield self.create_run_response("Run started", session_id=session_id, event=RunEvent.run_started)
+            yield self.create_run_response("", session_id=session_id, event=RunEvent.run_started)
 
         # 7. Generate a response from the Model (includes running function calls)
         model_response: ModelResponse
@@ -1307,7 +1307,7 @@ class Agent:
 
         # 6. Start the Run by yielding a RunStarted event
         if self.stream_intermediate_steps:
-            yield self.create_run_response("Run started", session_id=session_id, event=RunEvent.run_started)
+            yield self.create_run_response("", session_id=session_id, event=RunEvent.run_started)
 
         # 7. Generate a response from the Model (includes running function calls)
         reasoning_started = False

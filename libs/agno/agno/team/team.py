@@ -1026,7 +1026,7 @@ class Team:
 
         # Start the Run by yielding a RunStarted event
         if stream_intermediate_steps:
-            yield self._create_run_response(content="Run started", event=RunEvent.run_started, session_id=session_id)
+            yield self._create_run_response(content="", event=RunEvent.run_started, session_id=session_id)
 
         # 2. Get a response from the model
         full_model_response = ModelResponse()
@@ -1837,7 +1837,7 @@ class Team:
 
         # Start the Run by yielding a RunStarted event
         if stream_intermediate_steps:
-            yield self._create_run_response(content="Run started", event=RunEvent.run_started, session_id=session_id)
+            yield self._create_run_response(content="", event=RunEvent.run_started, session_id=session_id)
 
         # 2. Get a response from the model
         full_model_response = ModelResponse()
