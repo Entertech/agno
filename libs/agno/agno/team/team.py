@@ -2019,13 +2019,14 @@ class Team:
                                 )
                             else:
                                 if self.mode == "direct":
-                                    run_response.member_responses = []
-                                    run_response.content = None
-                                    run_response.tools = run_response.tools[:1]
+                                    run_response_tmp = TeamRunResponse.from_dict(run_response.to_dict())
+                                    run_response_tmp.member_responses = []
+                                    run_response_tmp.content = None
+                                    run_response_tmp.tools = run_response.tools[:1]
                                 yield self._create_run_response(
                                     content=model_response_chunk.content,
                                     event=RunEvent.tool_call_completed,
-                                    from_run_response=run_response,
+                                    from_run_response=run_response_tmp,
                                     session_id=session_id,
                                 )
             elif self.show_tool_calls_details and model_response_chunk.event == RunEvent.run_response.value:
