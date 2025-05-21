@@ -1905,7 +1905,9 @@ class Team:
             elif model_response_chunk.event == ModelResponseEvent.tool_call_started.value:
                 if self.show_tool_calls_details and isinstance(model_response_chunk, RunResponse):
                     if stream_intermediate_steps:
-                        run_response.tools = model_response_chunk.tools
+                        if run_response.tools is None:
+                            run_response.tools = []
+                        run_response.tools.extend(model_response_chunk.tools)
                         run_response.formatted_tool_calls = format_tool_calls(
                             run_response.tools
                         )
@@ -1941,7 +1943,9 @@ class Team:
             elif model_response_chunk.event == ModelResponseEvent.tool_call_completed.value:
                 if self.show_tool_calls_details and isinstance(model_response_chunk, RunResponse):
                     if stream_intermediate_steps:
-                        run_response.tools = model_response_chunk.tools
+                        if run_response.tools is None:
+                            run_response.tools = []
+                        run_response.tools.extend(model_response_chunk.tools)
                         run_response.formatted_tool_calls = format_tool_calls(
                             run_response.tools
                         )
@@ -1970,7 +1974,10 @@ class Team:
                                 if index is not None:
                                     run_response.tools[index] = tool_call_dict
                         else:
-                            run_response.tools = new_tool_calls_list
+                            if run_response.tools is None:
+                                run_response.tools = new_tool_calls_list
+                            else:
+                                run_response.tools.extend(new_tool_calls_list)
 
                         # Only iterate through new tool calls
                         for tool_call in new_tool_calls_list:
@@ -2011,6 +2018,10 @@ class Team:
                                     session_id=session_id,
                                 )
                             else:
+                                if self.mode == "direct":
+                                    run_response.member_responses = []
+                                    run_response.content = None
+                                    run_response.tools = run_response.tools[:1]
                                 yield self._create_run_response(
                                     content=model_response_chunk.content,
                                     event=RunEvent.tool_call_completed,
@@ -6095,7 +6106,8 @@ class Team:
                         member_agent_run_response_chunk.tools is not None
                         and len(member_agent_run_response_chunk.tools) > 0
                     ):
-                        yield ",".join([tool.get("content", "") for tool in member_agent_run_response_chunk.tools])
+                        # yield ",".join([tool.get("content", "") for tool in member_agent_run_response_chunk.tools])
+                        yield member_agent_run_response_chunk
             else:
                 member_agent_run_response = await member_agent.arun(
                     member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=False

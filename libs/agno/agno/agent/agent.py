@@ -1413,10 +1413,10 @@ class Agent:
                     #         event=RunEvent.tool_call_started,
                     #         session_id=session_id,
                     #     )
-                    model_response_chunk.content = ""
+                    model_response_chunk.content = None
                     if self.stream_intermediate_steps:
                         yield self.create_run_response(
-                            content="",
+                            content=None,
                             event=RunEvent.tool_call_started,
                             session_id=session_id,
                         )
@@ -1480,10 +1480,10 @@ class Agent:
                         #     event=RunEvent.tool_call_completed,
                         #     session_id=session_id,
                         # )
-                        model_response_chunk.content = ""
+                        model_response_chunk.content = None
                         if self.stream_intermediate_steps:
                             yield self.create_run_response(
-                                content="",
+                                content=None,
                                 event=RunEvent.tool_call_completed,
                                 session_id=session_id,
                             )
