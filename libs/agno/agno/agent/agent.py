@@ -1255,7 +1255,6 @@ class Agent:
             self.memory = cast(AgentMemory, self.memory)
         else:
             self.memory = cast(Memory, self.memory)
-            self.memory.get_user_memories(user_id=user_id)
 
         # 1.2 Set streaming and stream intermediate steps
         self.stream = self.stream or (stream and self.is_streamable)
@@ -1740,6 +1739,7 @@ class Agent:
         # Use the default user_id and session_id when necessary
         if user_id is None:
             user_id = self.user_id
+        self.get_user_memories(user_id=user_id)
 
         if session_id is None or session_id == "":
             if self.team_session_id is not None:
@@ -2819,7 +2819,7 @@ class Agent:
             elif isinstance(self.memory, Memory) and (self.add_memory_references):
                 if not user_id:
                     user_id = "default"
-                user_memories = self.memory.get_user_memories(user_id=user_id)  # type: ignore
+                user_memories = self.memory.memories.get(user_id, {})  # type: ignore
                 if user_memories and len(user_memories) > 0:
                     system_message_content += "<memories_from_previous_interactions>\n"
                     system_message_content += (
@@ -2828,19 +2828,19 @@ class Agent:
                     system_message_content += "<reminders>\n"
                     system_message_content += "Title | Datetime | Status\n"
                     system_message_content += "---|---|---\n"
-                    for _memory in [m for m in user_memories if "Reminders" in m.topics]:  # type: ignore
+                    for _memory in [m for _, m in user_memories.items() if "Reminders" in m.topics]:  # type: ignore
                         system_message_content += (
                             f"{_memory.memory}|{_memory.datetime_at.strftime('%Y-%m-%d %H:%M:%S')}|{_memory.status}\n"
                         )
                     system_message_content += "</reminders>\n"
                     system_message_content += "<notes>\n"
-                    for _memory in [m for m in user_memories if "Notes" in m.topics]:  # type: ignore
+                    for _memory in [m for _, m in user_memories.items() if "Notes" in m.topics]:  # type: ignore
                         system_message_content += (
                             f"- {_memory.memory}\n"
                         )
                     system_message_content += "</notes>\n"
                     system_message_content += "<personal_preferences>\n"
-                    for _memory in [m for m in user_memories if "Reminders" not in m.topics and "Notes" not in m.topics]:  # type: ignore
+                    for _memory in [m for _, m in user_memories.items() if "Reminders" not in m.topics and "Notes" not in m.topics]:  # type: ignore
                         system_message_content += (
                             f"- {_memory.memory}\n"
                         )

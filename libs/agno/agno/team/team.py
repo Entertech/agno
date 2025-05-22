@@ -1401,6 +1401,7 @@ class Team:
         if isinstance(self.memory, Memory):
             if self.memory.model is None and self.model is not None:
                 self.memory.set_model(self.model)
+            self.get_user_memories(user_id=user_id)
 
         # Read existing session from storage
         if self.context is not None:
@@ -1813,7 +1814,6 @@ class Team:
             self.memory = cast(TeamMemory, self.memory)
         elif isinstance(self.memory, Memory):
             self.memory = cast(Memory, self.memory)
-            self.memory.get_user_memories(user_id=user_id)
 
         self.model = cast(Model, self.model)
 
@@ -4764,19 +4764,19 @@ class Team:
                     system_message_content += "<reminders>\n"
                     system_message_content += "Title | Datetime | Status\n"
                     system_message_content += "---|---|---\n"
-                    for _memory in [m for m in user_memories if "Reminders" in m.topics]:  # type: ignore
+                    for _memory in [m for _, m in user_memories.items() if "Reminders" in m.topics]:  # type: ignore
                         system_message_content += (
                             f"{_memory.memory}|{_memory.datetime_at.strftime('%Y-%m-%d %H:%M:%S')}|{_memory.status}\n"
                         )
                     system_message_content += "</reminders>\n"
                     system_message_content += "<notes>\n"
-                    for _memory in [m for m in user_memories if "Notes" in m.topics]:  # type: ignore
+                    for _memory in [m for _, m in user_memories.items() if "Notes" in m.topics]:  # type: ignore
                         system_message_content += (
                             f"- {_memory.memory}\n"
                         )
                     system_message_content += "</notes>\n"
                     system_message_content += "<personal_preferences>\n"
-                    for _memory in [m for m in user_memories if "Reminders" not in m.topics and "Notes" not in m.topics]:  # type: ignore
+                    for _memory in [m for _, m in user_memories.items() if "Reminders" not in m.topics and "Notes" not in m.topics]:  # type: ignore
                         system_message_content += (
                             f"- {_memory.memory}\n"
                         )
