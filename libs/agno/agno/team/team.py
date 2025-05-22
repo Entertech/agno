@@ -1813,6 +1813,7 @@ class Team:
             self.memory = cast(TeamMemory, self.memory)
         elif isinstance(self.memory, Memory):
             self.memory = cast(Memory, self.memory)
+            self.memory.get_user_memories(user_id=user_id)
 
         self.model = cast(Model, self.model)
 
