@@ -7159,6 +7159,7 @@ class Team:
         from time import time
 
         """Get an TeamMemory object, which can be saved to the database"""
+        title = self.team_session.title if self.team_session else None
         if self.memory is not None:
             if isinstance(self.memory, TeamMemory):
                 self.memory = cast(TeamMemory, self.memory)
@@ -7171,6 +7172,8 @@ class Team:
                     run_responses = self.memory.runs.get(session_id)
                     if run_responses is not None:
                         memory_dict["runs"] = [rr.to_dict() for rr in run_responses]
+                if title is None:
+                    title = self.memory.summaries.get(user_id, {}).get(session_id, SessionSummary(summary=None)).summary
         else:
             memory_dict = None
 
@@ -7178,6 +7181,7 @@ class Team:
             session_id=session_id,
             team_id=self.team_id,
             user_id=user_id,
+            title=title,
             team_session_id=self.team_session_id,
             memory=memory_dict,
             team_data=self._get_team_data(),

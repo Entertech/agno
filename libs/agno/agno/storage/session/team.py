@@ -18,6 +18,8 @@ class TeamSession:
     team_id: Optional[str] = None
     # ID of the user interacting with this team
     user_id: Optional[str] = None
+    # Title of the team session
+    title: Optional[str] = None
     # Team Memory
     memory: Optional[Dict[str, Any]] = None
     # Team Data: agent_id, name and model
@@ -51,6 +53,7 @@ class TeamSession:
             team_id=data.get("team_id"),
             team_session_id=data.get("team_session_id"),
             user_id=data.get("user_id"),
+            title=data.get("title"),
             memory=data.get("memory"),
             team_data=data.get("team_data"),
             session_data=data.get("session_data"),

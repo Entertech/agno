@@ -101,6 +101,7 @@ class PostgresStorage(Storage):
         common_columns = [
             Column("session_id", String, primary_key=True),
             Column("user_id", String, index=True),
+            Column("title", String, index=True, nullable=True),
             Column("memory", postgresql.JSONB),
             Column("session_data", postgresql.JSONB),
             Column("extra_data", postgresql.JSONB),
@@ -383,6 +384,27 @@ class PostgresStorage(Storage):
                         alter_table_query = text(
                             f"ALTER TABLE {self.schema}.{self.table_name} ADD COLUMN team_session_id TEXT"
                         )
+                        sess.execute(alter_table_query)
+                        sess.commit()
+                        self._schema_up_to_date = True
+                        log_info("Schema upgrade completed successfully")
+            elif self.mode == "team" and self.table_exists():
+                with self.Session() as sess:
+                    # Check if title column exists
+                    column_exists_query = text(
+                        """
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = :schema AND table_name = :table
+                        AND column_name = 'title'
+                        """
+                    )
+                    column_exists = (
+                        sess.execute(column_exists_query, {"schema": self.schema, "table": self.table_name}).scalar()
+                        is not None
+                    )
+                    if not column_exists:
+                        log_info(f"Adding 'title' column to {self.schema}.{self.table_name}")
+                        alter_table_query = text(f"ALTER TABLE {self.schema}.{self.table_name} ADD COLUMN title TEXT")
                         sess.execute(alter_table_query)
                         sess.commit()
                         self._schema_up_to_date = True
