@@ -146,7 +146,7 @@ class OpenAIChat(Model):
             AsyncOpenAIClient: An instance of the asynchronous OpenAI client.
         """
         if self.async_client:
-            return self.async_client
+            return self.async_client.copy()
 
         client_params: Dict[str, Any] = self._get_client_params()
         if self.http_client:
@@ -156,7 +156,8 @@ class OpenAIChat(Model):
             client_params["http_client"] = httpx.AsyncClient(
                 limits=httpx.Limits(max_connections=1000, max_keepalive_connections=100)
             )
-        return AsyncOpenAIClient(**client_params)
+        self.async_client = AsyncOpenAIClient(**client_params)
+        return self.async_client
 
     @property
     def request_kwargs(self) -> Dict[str, Any]:
