@@ -1385,14 +1385,11 @@ class Team:
         session_id = cast(str, session_id)
 
         log_debug(f"Session ID: {session_id}", center=True)
-        log_info(">>>>>>>> 1")
         self.initialize_team(session_id=session_id)
-        log_info(">>>>>>>> 2")
         show_tool_calls = self.show_tool_calls
 
         # Read existing session from storage
         self.read_from_storage(session_id=session_id)
-        log_info(">>>>>>>> 3")
         # Initialize memory if not yet set
         if self.memory is None:
             self.memory = Memory()
@@ -1402,12 +1399,10 @@ class Team:
             if self.memory.model is None and self.model is not None:
                 self.memory.set_model(self.model)
             self.get_user_memories(user_id=user_id)
-        log_info(">>>>>>>> 4")
         # Read existing session from storage
         if self.context is not None:
             self._resolve_run_context()
-        log_info(">>>>>>>> 5")
-
+        
         if self.response_model is not None and self.parse_response and stream is True:
             # Disable stream if response_model is set
             stream = False
@@ -1415,7 +1410,6 @@ class Team:
 
         # Configure the model for runs
         self._configure_model(show_tool_calls=show_tool_calls)
-        log_info(">>>>>>>> 6")
         # Run the team
         last_exception = None
         num_attempts = retries + 1
@@ -1436,7 +1430,6 @@ class Team:
                     self.run_input = message.to_dict()
                 else:
                     self.run_input = message
-            log_info(">>>>>>>> 7")
             # Prepare tools
             _tools: List[Union[Function, Callable, Toolkit, Dict]] = []
 
@@ -1444,17 +1437,13 @@ class Team:
             if self.tools is not None:
                 for tool in self.tools:
                     _tools.append(tool)
-            log_info(">>>>>>>> 8")
 
             if self.read_team_history:
                 _tools.append(self.get_team_history_function(session_id=session_id))
-            log_info(">>>>>>>> 9")
             if isinstance(self.memory, Memory) and self.enable_agentic_memory:
                 _tools.append(self.get_update_user_memory_function(user_id=user_id, async_mode=True))
-            log_info(">>>>>>>> 10")
             if (self.knowledge is not None or self.retriever is not None) and self.search_knowledge:
                 _tools.append(self.asearch_knowledge_base)
-            log_info(">>>>>>>> 11")
             if self.mode == "route":
                 user_message = self._get_user_message(message, audio=audio, images=images, videos=videos, files=files)
                 forward_task_func: Function = self.get_forward_task_function(
@@ -1498,7 +1487,6 @@ class Team:
                     )
                 )
                 self.model.tool_choice = "auto"  # type: ignore
-                log_info(">>>>>>>> 12")
                 if self.enable_agentic_context:
                     _tools.append(self.get_set_shared_context_function(session_id=session_id))
             elif self.mode == "collaborate":
@@ -1516,9 +1504,7 @@ class Team:
 
                 if self.enable_agentic_context:
                     _tools.append(self.get_set_shared_context_function(session_id=session_id))
-            log_info(">>>>>>>> 13")
             self._add_tools_to_model(self.model, tools=_tools)  # type: ignore
-            log_info(">>>>>>>> 14")
             # Run the team
             try:
                 self.run_response = TeamRunResponse(run_id=self.run_id, session_id=session_id, team_id=self.team_id)
@@ -1549,7 +1535,6 @@ class Team:
                         files=files,
                         **kwargs,
                     )
-                log_info(">>>>>>>> 15")
                 if stream:
                     resp = self._arun_stream(
                         run_response=self.run_response,
@@ -1558,7 +1543,6 @@ class Team:
                         user_id=user_id,
                         stream_intermediate_steps=stream_intermediate_steps,
                     )
-                    log_info(">>>>>>>> 16")
                     return resp
                 else:
                     await self._arun(
@@ -1847,7 +1831,6 @@ class Team:
         full_model_response = ModelResponse()
         model_stream = self.model.aresponse_stream(messages=run_messages.messages)
         async for model_response_chunk in model_stream:
-            log_info(">>>>>>>> 17")
             # If the model response is an assistant_response, yield a RunResponse
             if model_response_chunk.event == ModelResponseEvent.assistant_response.value:
                 should_yield = False
@@ -6179,17 +6162,14 @@ class Team:
         else:
             direct_function = direct_task_to_member  # type: ignore
 
-        log_info(">>>>>>>> 0001")
         direct_func = Function.from_callable(direct_function, strict=True)
-        log_info(">>>>>>>> 0002")
 
         for member in self.members:
             if member.respond_directly:
                 direct_func.stop_after_tool_call = True
                 direct_func.show_result = True
                 break
-        log_info(">>>>>>>> 0003")
-        
+
         return direct_func
 
     def _get_member_id(self, member: Union[Agent, "Team"]) -> str:

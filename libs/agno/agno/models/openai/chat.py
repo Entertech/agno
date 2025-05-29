@@ -506,9 +506,7 @@ class OpenAIChat(Model):
         """
 
         try:
-            log_info(">>>>>>>> 01")
             client = self.get_async_client()
-            log_info(">>>>>>>> 02")
             start_time = time.time()
             async_stream = await client.chat.completions.create(
                 model=self.id,
@@ -519,11 +517,9 @@ class OpenAIChat(Model):
             )
             end_time = time.time()
             log_info(f"stream connected time: {end_time - start_time} seconds")
-            log_info(">>>>>>>> 03")
             first_token_time = 0
             async for chunk in async_stream:
                 if first_token_time == 0:
-                    log_info(">>>>>>>> 04")
                     first_token_time = time.time()
                     log_info(f"stream first token time: {first_token_time - end_time} seconds")
                 yield chunk
