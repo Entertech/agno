@@ -146,19 +146,15 @@ class OpenAIChat(Model):
         Returns:
             AsyncOpenAIClient: An instance of the asynchronous OpenAI client.
         """
-        if self.async_client:
-            return self.async_client.copy()
-
         client_params: Dict[str, Any] = self._get_client_params()
-        if self.http_client:
+        if self.http_client or OpenAIChat.http_client:
             client_params["http_client"] = self.http_client
         else:
             # Create a new async HTTP client with custom limits
             client_params["http_client"] = httpx.AsyncClient(
                 limits=httpx.Limits(max_connections=1000, max_keepalive_connections=100)
             )
-        self.async_client = AsyncOpenAIClient(**client_params)
-        return self.async_client
+        return AsyncOpenAIClient(**client_params)
 
     @property
     def request_kwargs(self) -> Dict[str, Any]:
