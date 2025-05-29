@@ -148,7 +148,7 @@ class OpenAIChat(Model):
         """
         client_params: Dict[str, Any] = self._get_client_params()
         if self.http_client or OpenAIChat.http_client:
-            client_params["http_client"] = self.http_client
+            client_params["http_client"] = self.http_client or OpenAIChat.http_client
         else:
             # Create a new async HTTP client with custom limits
             client_params["http_client"] = httpx.AsyncClient(
