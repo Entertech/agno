@@ -2828,7 +2828,7 @@ class Agent:
                     system_message_content += "<reminders>\n"
                     system_message_content += "Title | Datetime | Status\n"
                     system_message_content += "---|---|---\n"
-                    for _memory in [m for _, m in user_memories.items() if "Reminders" in m.topics]:  # type: ignore
+                    for _memory in [m for _, m in user_memories.items() if "Reminders" in m.topics if m.datetime_at is not None]:  # type: ignore
                         system_message_content += (
                             f"{_memory.memory}|{_memory.datetime_at.strftime('%Y-%m-%d %H:%M:%S')}|{_memory.status}\n"
                         )
