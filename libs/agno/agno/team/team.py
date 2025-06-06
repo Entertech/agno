@@ -4822,13 +4822,21 @@ class Team:
             system_message_content += "<attached_media>\n"
             system_message_content += "You have the following media attached to your message:\n"
             if audio is not None and len(audio) > 0:
-                system_message_content += " - Audio\n"
+                system_message_content += "<audio>\n"
+                system_message_content += "\n".join([f"<id>{audio.id}</id>" for audio in audio])
+                system_message_content += "\n</audio>\n"
             if images is not None and len(images) > 0:
-                system_message_content += " - Images\n"
+                system_message_content += "<images>\n"
+                system_message_content += "\n".join([f"<id>{img.id}</id>" for img in images])
+                system_message_content += "\n</images>\n"
             if videos is not None and len(videos) > 0:
-                system_message_content += " - Videos\n"
+                system_message_content += "<videos>\n"
+                system_message_content += "\n".join([f"<id>{video.id}</id>" for video in videos])
+                system_message_content += "\n</videos>\n"
             if files is not None and len(files) > 0:
-                system_message_content += " - Files\n"
+                system_message_content += "<files>\n"
+                system_message_content += "\n".join([f"<id>{file.id}</id>" for file in files])
+                system_message_content += "\n</files>\n"
             system_message_content += "</attached_media>\n\n"
 
         if self.expected_output is not None:
