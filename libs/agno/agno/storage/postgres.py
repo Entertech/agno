@@ -438,6 +438,7 @@ class PostgresStorage(Storage):
                         team_session_id=session.team_session_id,  # type: ignore
                         user_id=session.user_id,
                         memory=session.memory,
+                        title=session.title,
                         agent_data=session.agent_data,  # type: ignore
                         session_data=session.session_data,
                         extra_data=session.extra_data,
@@ -451,6 +452,7 @@ class PostgresStorage(Storage):
                             team_session_id=session.team_session_id,  # type: ignore
                             user_id=session.user_id,
                             memory=session.memory,
+                            title=session.title,
                             agent_data=session.agent_data,  # type: ignore
                             session_data=session.session_data,
                             extra_data=session.extra_data,
@@ -464,6 +466,7 @@ class PostgresStorage(Storage):
                         user_id=session.user_id,
                         team_session_id=session.team_session_id,  # type: ignore
                         memory=session.memory,
+                        title=session.title,
                         team_data=session.team_data,  # type: ignore
                         session_data=session.session_data,
                         extra_data=session.extra_data,
@@ -477,6 +480,7 @@ class PostgresStorage(Storage):
                             user_id=session.user_id,
                             team_session_id=session.team_session_id,  # type: ignore
                             memory=session.memory,
+                            title=session.title,
                             team_data=session.team_data,  # type: ignore
                             session_data=session.session_data,
                             extra_data=session.extra_data,
@@ -489,6 +493,7 @@ class PostgresStorage(Storage):
                         workflow_id=session.workflow_id,  # type: ignore
                         user_id=session.user_id,
                         memory=session.memory,
+                        title=session.title,
                         workflow_data=session.workflow_data,  # type: ignore
                         session_data=session.session_data,
                         extra_data=session.extra_data,
@@ -501,6 +506,7 @@ class PostgresStorage(Storage):
                             workflow_id=session.workflow_id,  # type: ignore
                             user_id=session.user_id,
                             memory=session.memory,
+                            title=session.title,
                             workflow_data=session.workflow_data,  # type: ignore
                             session_data=session.session_data,
                             extra_data=session.extra_data,
