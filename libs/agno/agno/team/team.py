@@ -210,6 +210,8 @@ class Team:
     num_of_interactions_from_history: Optional[int] = None
     # Number of historical runs to include in the messages
     num_history_runs: int = 3
+    # Function to resign the messages from history
+    resources_resign_function: Optional[Callable] = None
 
     # --- Team Storage ---
     storage: Optional[Storage] = None
@@ -283,6 +285,7 @@ class Team:
         enable_team_history: bool = False,
         num_of_interactions_from_history: Optional[int] = None,
         num_history_runs: int = 3,
+        resources_resign_function: Optional[Callable] = None,
         storage: Optional[Storage] = None,
         extra_data: Optional[Dict[str, Any]] = None,
         reasoning: bool = False,
@@ -352,7 +355,7 @@ class Team:
         self.enable_team_history = enable_team_history
         self.num_of_interactions_from_history = num_of_interactions_from_history
         self.num_history_runs = num_history_runs
-
+        self.resources_resign_function = resources_resign_function
         self.storage = storage
         self.extra_data = extra_data
 
@@ -4900,7 +4903,10 @@ class Team:
                 history = self.memory.get_messages_from_last_n_runs(last_n=self.num_history_runs, skip_role="system")
             elif isinstance(self.memory, Memory):
                 history = self.memory.get_messages_from_last_n_runs(
-                    session_id=session_id, last_n=self.num_history_runs, skip_role="system"
+                    session_id=session_id,
+                    last_n=self.num_history_runs,
+                    skip_role="system",
+                    resources_resign_function=self.resources_resign_function,
                 )
 
             if len(history) > 0:
