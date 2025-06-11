@@ -486,20 +486,20 @@ class FunctionCall(BaseModel):
         if self.function._agent and self.function._agent.context:
             if self.function.parameters.get("properties", {}).get("account_id"):
                 entrypoint_args["account_id"] = (
-                    entrypoint_args["account_id"] or self.function._agent.context.get("account_id")
+                    entrypoint_args.get("account_id") or self.function._agent.context.get("account_id")
                 )
             if self.function.parameters.get("properties", {}).get("ts"):
                 entrypoint_args["ts"] = (
-                    entrypoint_args["ts"] or self.function._agent.context.get("ts")
+                    entrypoint_args.get("ts") or self.function._agent.context.get("ts")
                 )
             if self.function.parameters.get("properties", {}).get("session_id"):
                 entrypoint_args["session_id"] = (
-                    entrypoint_args["session_id"]
+                    entrypoint_args.get("session_id")
                     or self.function._agent.context.get("session_id")
                 )
             if self.function.parameters.get("properties", {}).get("image_id"):
                 entrypoint_args["image_id"] = (
-                    entrypoint_args["image_id"]
+                    entrypoint_args.get("image_id")
                     or ",".join(self.function._agent.context.get("image_ids", []))
                 )
 
