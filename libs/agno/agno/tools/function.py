@@ -483,6 +483,26 @@ class FunctionCall(BaseModel):
             if self.function.parameters.get("properties", {}).get("image_id"):
                 entrypoint_args["image_id"] = ",".join(self.function._team.context.get("image_ids", []))
 
+        if self.function._agent and self.function._agent.context:
+            if self.function.parameters.get("properties", {}).get("account_id"):
+                entrypoint_args["account_id"] = (
+                    entrypoint_args["account_id"] or self.function._agent.context.get("account_id")
+                )
+            if self.function.parameters.get("properties", {}).get("ts"):
+                entrypoint_args["ts"] = (
+                    entrypoint_args["ts"] or self.function._agent.context.get("ts")
+                )
+            if self.function.parameters.get("properties", {}).get("session_id"):
+                entrypoint_args["session_id"] = (
+                    entrypoint_args["session_id"]
+                    or self.function._agent.context.get("session_id")
+                )
+            if self.function.parameters.get("properties", {}).get("image_id"):
+                entrypoint_args["image_id"] = (
+                    entrypoint_args["image_id"]
+                    or ",".join(self.function._agent.context.get("image_ids", []))
+                )
+
         return entrypoint_args
 
     def _build_nested_execution_chain(self, entrypoint_args: Dict[str, Any]):
