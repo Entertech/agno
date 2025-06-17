@@ -474,6 +474,9 @@ class FunctionCall(BaseModel):
             entrypoint_args["fc"] = self
 
         if self.function._team and self.function._team.context:
+            if self.function.parameters.get("properties", {}).get("kwargs"):
+                entrypoint_args["kwargs"] = self.function._team.context
+            
             if self.function.parameters.get("properties", {}).get("account_id"):
                 entrypoint_args["account_id"] = self.function._team.context.get("account_id")
             if self.function.parameters.get("properties", {}).get("ts"):
@@ -484,6 +487,9 @@ class FunctionCall(BaseModel):
                 entrypoint_args["image_id"] = ",".join(self.function._team.context.get("image_ids", []))
 
         if self.function._agent and self.function._agent.context:
+            if self.function.parameters.get("properties", {}).get("kwargs"):
+                entrypoint_args["kwargs"] = self.function._agent.context
+            
             if self.function.parameters.get("properties", {}).get("account_id"):
                 entrypoint_args["account_id"] = (
                     entrypoint_args.get("account_id") or self.function._agent.context.get("account_id")
