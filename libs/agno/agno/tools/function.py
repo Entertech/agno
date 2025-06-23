@@ -1,4 +1,5 @@
 from functools import partial
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, get_type_hints
 
 from docstring_parser import parse
@@ -476,7 +477,10 @@ class FunctionCall(BaseModel):
         if self.function._team and self.function._team.context:
             if self.function.parameters.get("properties", {}).get("kwargs"):
                 entrypoint_args["kwargs"] = self.function._team.context
-            
+                for k, v in entrypoint_args["kwargs"].items():
+                    if isinstance(v, datetime):
+                        entrypoint_args["kwargs"][k] = v.strftime("%Y-%m-%dT%H:%M:%SZ")
+
             if self.function.parameters.get("properties", {}).get("account_id"):
                 entrypoint_args["account_id"] = self.function._team.context.get("account_id")
             if self.function.parameters.get("properties", {}).get("ts"):
@@ -489,7 +493,10 @@ class FunctionCall(BaseModel):
         if self.function._agent and self.function._agent.context:
             if self.function.parameters.get("properties", {}).get("kwargs"):
                 entrypoint_args["kwargs"] = self.function._agent.context
-            
+                for k, v in entrypoint_args["kwargs"].items():
+                    if isinstance(v, datetime):
+                        entrypoint_args["kwargs"][k] = v.strftime("%Y-%m-%dT%H:%M:%SZ")
+
             if self.function.parameters.get("properties", {}).get("account_id"):
                 entrypoint_args["account_id"] = (
                     entrypoint_args.get("account_id") or self.function._agent.context.get("account_id")
