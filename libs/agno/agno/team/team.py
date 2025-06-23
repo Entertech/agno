@@ -7165,6 +7165,7 @@ class Team:
 
         """Get an TeamMemory object, which can be saved to the database"""
         title = self.team_session.title if self.team_session else None
+        summary = self.team_session.summary if self.team_session else None
         if self.memory is not None:
             if isinstance(self.memory, TeamMemory):
                 self.memory = cast(TeamMemory, self.memory)
@@ -7187,6 +7188,7 @@ class Team:
             team_id=self.team_id,
             user_id=user_id,
             title=title,
+            summary=summary,
             team_session_id=self.team_session_id,
             memory=memory_dict,
             team_data=self._get_team_data(),
