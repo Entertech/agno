@@ -4722,7 +4722,7 @@ class Team:
         #     system_message_content += "Stop the team run when the success_criteria is met.\n\n"
 
         if self.description is not None:
-            system_message_content += f"<description>\n{self.description}\n</description>\n\n"
+            system_message_content += f"{self.description}\n"
 
         # 3.3.5 Then add instructions for the Agent
         if len(instructions) > 0:
@@ -4732,14 +4732,14 @@ class Team:
                     system_message_content += f"\n- {_upi}"
             else:
                 system_message_content += "\n" + instructions[0]
-            system_message_content += "\n</instructions>\n\n"
+            system_message_content += "\n</instructions>\n"
 
         # 3.3.7 Then add instructions for the tools
         if self._tool_instructions is not None:
             system_message_content += "<tools_instructions>\n"
             for _ti in self._tool_instructions:
                 system_message_content += f"{_ti}"
-            system_message_content += "</tools_instructions>\n\n"
+            system_message_content += "</tools_instructions>\n"
 
         system_message_from_model = self.model.get_system_message_for_model()
         if system_message_from_model is not None:
@@ -4754,7 +4754,7 @@ class Team:
                 if user_memories and len(user_memories) > 0:
                     system_message_content += "<memories_from_previous_interactions>\n"
                     system_message_content += (
-                        "You have access to memories from previous interactions with the user that you can use:\n\n"
+                        "You have access to memories from previous interactions with the user that you can use:\n"
                     )
                     system_message_content += "<reminders>\n"
                     system_message_content += "Title | Datetime | Status\n"
@@ -4777,7 +4777,7 @@ class Team:
                         )
                     system_message_content += "</personal_preferences>\n"
 
-                    system_message_content += "\n</memories_from_previous_interactions>\n\n"
+                    system_message_content += "\n</memories_from_previous_interactions>\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be updated in this conversation. "
                         "You should always prefer information from this conversation over the past memories.\n"
@@ -4795,7 +4795,7 @@ class Team:
                         "Memories should include details that could personalize ongoing interactions with the user.\n"
                         "Use this tool to add new memories or update existing memories that you identify in the conversation.\n"
                         "Use this tool if the user asks to update their memory, delete a memory, or clear all memories.\n"
-                        "If you use the `update_user_memory` tool, remember to pass on the response to the user.\n\n"
+                        "If you use the `update_user_memory` tool, remember to pass on the response to the user.\n"
                     )
 
             # Then add a summary of the interaction to the system prompt
@@ -4804,13 +4804,13 @@ class Team:
                     user_id = "default"
                 session_summary: SessionSummary = self.memory.summaries.get(user_id, {}).get(session_id, None)  # type: ignore
                 if session_summary is not None:
-                    system_message_content += "Here is a brief summary of your previous interactions:\n\n"
+                    system_message_content += "Here is a brief summary of your previous interactions:\n"
                     system_message_content += "<summary_of_previous_interactions>\n"
                     system_message_content += session_summary.summary
-                    system_message_content += "\n</summary_of_previous_interactions>\n\n"
+                    system_message_content += "\n</summary_of_previous_interactions>\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be outdated. "
-                        "You should ALWAYS prefer information from this conversation over the past summary.\n\n"
+                        "You should ALWAYS prefer information from this conversation over the past summary.\n"
                     )
 
         # 3.3.6 Add additional information
@@ -4818,11 +4818,11 @@ class Team:
             system_message_content += "<additional_information>"
             for _ai in additional_information:
                 system_message_content += f"\n- {_ai}"
-            system_message_content += "\n</additional_information>\n\n"
+            system_message_content += "\n</additional_information>\n"
 
         if self.additional_context is not None:
             system_message_content += (
-                f"<additional_context>\n{self.additional_context.strip()}\n</additional_context>\n\n"
+                f"<additional_context>\n{self.additional_context.strip()}\n</additional_context>\n"
             )
 
         # Attached media
@@ -4964,7 +4964,7 @@ class Team:
 
             # Add context to user message
             if self.add_context and self.context is not None:
-                user_message_content += "\n\n<context>\n"
+                user_message_content += "\n<context>\n"
                 user_message_content += self._convert_context_to_string(self.context) + "\n"
                 user_message_content += "</context>"
 
