@@ -4822,7 +4822,7 @@ class Team:
 
         if self.additional_context is not None:
             system_message_content += (
-                f"<additional_context>\n{self.additional_context.strip()}\n</additional_context>\n"
+                f"\n{self.additional_context.strip()}\n"
             )
 
         # Attached media
