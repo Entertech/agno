@@ -4738,7 +4738,7 @@ class Team:
         if self._tool_instructions is not None:
             system_message_content += "<tools_instructions>\n"
             for _ti in self._tool_instructions:
-                system_message_content += f"{_ti}\n\n"
+                system_message_content += f"{_ti}"
             system_message_content += "</tools_instructions>\n\n"
 
         system_message_from_model = self.model.get_system_message_for_model()
