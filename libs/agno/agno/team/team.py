@@ -1568,6 +1568,7 @@ class Team:
                 if attempt < num_attempts - 1:
                     await asyncio.sleep(2**attempt)
             except (KeyboardInterrupt, RunCancelledException):
+                log_error(f"Operation cancelled by user", exc_info=True)
                 return TeamRunResponse(
                     run_id=self.run_id or str(uuid4()),
                     session_id=self.session_id,
@@ -1575,6 +1576,11 @@ class Team:
                     content="Operation cancelled by user",
                     event=RunEvent.run_cancelled,
                 )
+            except Exception as e:
+                log_error(f"Unexpected error in arun attempt {attempt + 1}/{num_attempts}: {str(e)}", exc_info=True)
+                last_exception = e
+                if attempt < num_attempts - 1:
+                    await asyncio.sleep(2**attempt)
 
         # If we get here, all retries failed
         if last_exception is not None:
