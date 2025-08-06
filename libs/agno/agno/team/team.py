@@ -4932,6 +4932,14 @@ class Team:
 
                 # Extend the messages with the history
                 run_messages.messages += history_copy
+            if self.context is not None and self.context.get("opening_words"):
+                run_messages.messages.append(
+                    Message(
+                        role="assistant",
+                        content=self.context["opening_words"],
+                        from_history=True,
+                    )
+                )
 
         # 3. Add user message to run_messages
         user_message = self._get_user_message(message, audio=audio, images=images, videos=videos, files=files, **kwargs)
