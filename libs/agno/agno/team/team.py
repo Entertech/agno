@@ -4926,7 +4926,7 @@ class Team:
 
                 # Extend the messages with the history
                 run_messages.messages += history_copy
-            if self.context is not None and "opening_words" in self.context:
+            if self.context is not None and self.context.get("opening_words"):
                 run_messages.messages.append(
                     Message(
                         role="assistant",
