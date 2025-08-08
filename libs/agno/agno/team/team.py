@@ -4932,6 +4932,7 @@ class Team:
 
                 # Extend the messages with the history
                 run_messages.messages += history_copy
+            log_debug(f"opening_words: {self.context.get('opening_words') if self.context is not None else None}")
             if self.context is not None and self.context.get("opening_words"):
                 run_messages.messages.append(
                     Message(
