@@ -1051,9 +1051,9 @@ class Model(ABC):
             function_call_output: str = ""
             if isinstance(fc.result, (GeneratorType, collections.abc.Iterator)):
                 for item in fc.result:
-                    if self.show_tool_calls and isinstance(item, ModelResponse):
+                    if isinstance(item, ModelResponse):
                         yield item
-                    elif self.show_tool_calls and isinstance(item, RunResponse):
+                    elif isinstance(item, RunResponse):
                         yield item
                     else:
                         function_call_output += str(item)
@@ -1061,18 +1061,18 @@ class Model(ABC):
                             yield ModelResponse(content=str(item))
             elif isinstance(fc.result, (AsyncGeneratorType, collections.abc.AsyncIterator)):
                 async for item in fc.result:
-                    if self.show_tool_calls and isinstance(item, ModelResponse):
+                    if isinstance(item, ModelResponse):
                         yield item
-                    elif self.show_tool_calls and isinstance(item, RunResponse):
+                    elif isinstance(item, RunResponse):
                         yield item
                     else:
                         function_call_output += str(item)
                         if fc.function.show_result:
                             yield ModelResponse(content=str(item))
             else:
-                if self.show_tool_calls and isinstance(fc.result, ModelResponse):
+                if isinstance(fc.result, ModelResponse):
                     yield fc.result
-                elif self.show_tool_calls and isinstance(fc.result, RunResponse):
+                elif isinstance(fc.result, RunResponse):
                     yield fc.result
                 else:
                     function_call_output = str(fc.result)
