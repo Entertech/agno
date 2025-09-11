@@ -311,7 +311,6 @@ class MultiMCPTools(Toolkit):
             else:
                 if len(urls) != len(urls_transports):
                     raise ValueError("urls and urls_transports must be of the same length")
-
         # Set these after `__init__` to bypass the `_check_tools_filters`
         # beacuse tools are not available until `initialize()` is called.
         self.include_tools = include_tools

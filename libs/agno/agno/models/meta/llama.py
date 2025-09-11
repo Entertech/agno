@@ -23,7 +23,7 @@ try:
         EventDeltaToolCallDeltaFunction,
     )
     from llama_api_client.types.message_text_content_item import MessageTextContentItem
-except (ImportError, ModuleNotFoundError):
+except ImportError:
     raise ImportError("`llama-api-client` not installed. Please install using `pip install llama-api-client`")
 
 
@@ -159,7 +159,6 @@ class Llama(Model):
                     for _, obj in tool["function"]["parameters"].get("properties", {}).items():  # type: ignore
                         if isinstance(obj["type"], list):
                             obj["type"] = obj["type"][0]
-
         if self.response_format is not None:
             request_params["response_format"] = self.response_format
 
@@ -354,7 +353,6 @@ class Llama(Model):
                     model_response.parsed = parsed_object
         except Exception as e:
             log_warning(f"Error retrieving structured outputs: {e}")
-
         # Add role
         if response_message.role is not None:
             model_response.role = response_message.role

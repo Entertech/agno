@@ -6,7 +6,7 @@ import httpx
 
 try:
     from openai import AsyncOpenAI as AsyncOpenAIClient
-except (ModuleNotFoundError, ImportError):
+except ImportError:
     raise ImportError("`openai` not installed. Please install using `pip install openai`")
 
 from agno.models.meta.llama import Message
@@ -91,7 +91,6 @@ class LlamaOpenAI(OpenAILike):
             request_params.update(self.request_params)
 
         return request_params
-
     def _format_message(self, message: Message) -> Dict[str, Any]:
         """
         Format a message into the format expected by Llama API.
