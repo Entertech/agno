@@ -21,7 +21,11 @@ def test_no_parameters_tool_parsing():
             Message(role="system", content="You are an agent"),
             Message(role="user", content="What is the weather in Tokyo?"),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -45,7 +49,11 @@ def test_basic_parameters_tool_parsing():
             Message(role="system", content="You are an agent"),
             Message(role="user", content="What is the weather in Kyoto?"),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -70,7 +78,11 @@ def test_optional_parameters_tool_parsing():
             Message(role="system", content="You are an agent"),
             Message(role="user", content="What's the 5-day forecast for New York?"),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -98,7 +110,11 @@ def test_union_type_parameters_tool_parsing():
             Message(role="system", content="You are an agent"),
             Message(role="user", content="What's the weather like in Chicago at 75.5 degrees?"),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -124,7 +140,11 @@ def test_python312_union_syntax_tool_parsing():
             Message(role="system", content="You are an agent"),
             Message(role="user", content="What's the weather like in Chicago at 75.5 degrees?"),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -153,7 +173,11 @@ def test_pydantic_model_parameters_tool_parsing():
             Message(role="system", content="You are an agent"),
             Message(role="user", content="What is the weather in Paris, France?"),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -184,7 +208,11 @@ def test_complex_nested_parameters_tool_parsing():
                 content="I'm planning a trip to Barcelona. I like Spanish food and beach activities. My budget is between $1000 and $2000.",
             ),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -209,7 +237,11 @@ def test_multiple_functions_tool_parsing():
             Message(role="system", content="You are an agent"),
             Message(role="user", content="What's the weather in London and what time is it there?"),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -235,7 +267,11 @@ def test_list_with_generics_tool_parsing():
                 role="user", content="What's the weather forecast for New York, London, and Tokyo for the next 5 days?"
             ),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -259,7 +295,11 @@ def test_tuple_with_fixed_types_tool_parsing():
             Message(role="system", content="You are an agent."),
             Message(role="user", content="What's the temperature range in Miami for 2024-04-07?"),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -289,7 +329,11 @@ def test_sequence_with_optional_values_tool_parsing():
                 content="What were the temperatures in Chicago on June 15-17, 2023? Include humidity information.",
             ),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -315,7 +359,11 @@ def test_optional_sequence_tool_parsing():
             Message(role="system", content="You are an agent"),
             Message(role="user", content="Are there any high severity weather alerts in the Northeast region?"),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -349,7 +397,11 @@ def test_mixed_sequence_types_tool_parsing():
                 content="I'm planning a trip to Paris and Rome from July 10 to July 20, 2024. I might also visit Florence and Venice. What's the weather outlook?",
             ),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
@@ -410,7 +462,11 @@ def test_nested_pydantic_model_with_dict_tool_parsing():
                 content="I want to plan a trip to Paris, France for me and my partner for 7 days. We'd like to stay at The Grand Hotel in a deluxe room. We enjoy French cuisine and wine tastings, and want to visit museums and take walking tours. Our budget is $5000.",
             ),
         ],
+<<<<<<< HEAD
         tools=tools
+=======
+        tools=tools,
+>>>>>>> v1.5.1
     )
     assert response.function_calls is not None
     assert len(response.function_calls) > 0
