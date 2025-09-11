@@ -395,6 +395,8 @@ class Team:
         self.team_session: Optional[TeamSession] = None
 
         self._tool_instructions: Optional[List[str]] = None
+        self._functions_for_model: Optional[Dict[str, Function]] = None
+        self._tools_for_model: Optional[List[Dict[str, Any]]] = None
 
         # True if we should parse a member response model
         self._member_response_model: Optional[Type[BaseModel]] = None
@@ -597,8 +599,6 @@ class Team:
 
         self.initialize_team(session_id=session_id)
 
-        show_tool_calls = self.show_tool_calls
-
         # Read existing session from storage
         self.read_from_storage(session_id=session_id)
 
@@ -621,7 +621,7 @@ class Team:
             log_debug("Disabling stream as response_model is set")
 
         # Configure the model for runs
-        self._configure_model(show_tool_calls=show_tool_calls)
+        self._set_default_model()
 
         # Run the team
         last_exception = None
@@ -725,7 +725,8 @@ class Team:
                 if self.get_member_information_tool:
                     _tools.append(self.get_member_information)
 
-            self._add_tools_to_model(self.model, tools=_tools)  # type: ignore
+            self.model = cast(Model, self.model)
+            self.determine_tools_for_model(model=self.model, tools=_tools)
 
             # Run the team
             try:
@@ -828,6 +829,9 @@ class Team:
             self.memory = cast(Memory, self.memory)
         self.model = cast(Model, self.model)
 
+        # Configure parameters for the model
+        response_format = self._get_response_format()
+
         # 1. Reason about the task(s) if reasoning is enabled
         if self.reasoning or self.reasoning_model is not None:
             reasoning_generator = self._reason(
@@ -842,7 +846,14 @@ class Team:
         index_of_last_user_message = len(run_messages.messages)
 
         # 2. Get the model response for the team leader
-        model_response = self.model.response(messages=run_messages.messages)  # type: ignore
+        model_response = self.model.response(
+            messages=run_messages.messages,
+            response_format=response_format,
+            tools=self._tools_for_model,
+            functions=self._functions_for_model,
+            tool_choice=self.tool_choice,
+            tool_call_limit=self.tool_call_limit,
+        )  # type: ignore
 
         # 3. Update TeamRunResponse
         # Handle structured outputs
@@ -1016,6 +1027,9 @@ class Team:
 
         self.model = cast(Model, self.model)
 
+        # Configure parameters for the model
+        response_format = self._get_response_format()
+
         reasoning_started = False
         reasoning_time_taken = 0.0
 
@@ -1040,7 +1054,14 @@ class Team:
 
         # 2. Get a response from the model
         full_model_response = ModelResponse()
-        model_stream = self.model.response_stream(messages=run_messages.messages)  # type: ignore
+        model_stream = self.model.response_stream(
+            messages=run_messages.messages,
+            response_format=response_format,
+            tools=self._tools_for_model,
+            functions=self._functions_for_model,
+            tool_choice=self.tool_choice,
+            tool_call_limit=self.tool_call_limit,
+        )  # type: ignore
         for model_response_chunk in model_stream:
             # If the model response is an assistant_response, yield a RunResponse
             if model_response_chunk.event == ModelResponseEvent.assistant_response.value:
@@ -1398,7 +1419,6 @@ class Team:
 
         log_debug(f"Session ID: {session_id}", center=True)
         self.initialize_team(session_id=session_id)
-        show_tool_calls = self.show_tool_calls
 
         # Read existing session from storage
         self.read_from_storage(session_id=session_id)
@@ -1421,7 +1441,8 @@ class Team:
             log_debug("Disabling stream as response_model is set")
 
         # Configure the model for runs
-        self._configure_model(show_tool_calls=show_tool_calls)
+        self._set_default_model()
+
         # Run the team
         last_exception = None
         num_attempts = retries + 1
@@ -1516,7 +1537,10 @@ class Team:
 
                 if self.enable_agentic_context:
                     _tools.append(self.get_set_shared_context_function(session_id=session_id))
-            self._add_tools_to_model(self.model, tools=_tools)  # type: ignore
+
+            self.model = cast(Model, self.model)
+            self.determine_tools_for_model(model=self.model, tools=_tools)
+
             # Run the team
             try:
                 self.run_response = TeamRunResponse(run_id=self.run_id, session_id=session_id, team_id=self.team_id)
@@ -1618,6 +1642,9 @@ class Team:
         self.memory = cast(TeamMemory, self.memory)
         self.model = cast(Model, self.model)
 
+        # Configure parameters for the model
+        response_format = self._get_response_format()
+
         # 1. Reason about the task(s) if reasoning is enabled
         if self.reasoning or self.reasoning_model is not None:
             reasoning_generator = self._areason(
@@ -1633,7 +1660,14 @@ class Team:
         index_of_last_user_message = len(run_messages.messages)
 
         # 2. Get the model response for the team leader
-        model_response = await self.model.aresponse(messages=run_messages.messages)  # type: ignore
+        model_response = await self.model.aresponse(
+            messages=run_messages.messages,
+            response_format=response_format,
+            tools=self._tools_for_model,
+            functions=self._functions_for_model,
+            tool_choice=self.tool_choice,
+            tool_call_limit=self.tool_call_limit,
+        )  # type: ignore
 
         # 3. Update TeamRunResponse
         # Handle structured outputs
@@ -1822,6 +1856,9 @@ class Team:
 
         self.model = cast(Model, self.model)
 
+        # Configure parameters for the model
+        response_format = self._get_response_format()
+
         reasoning_started = False
         reasoning_time_taken = 0.0
 
@@ -1847,7 +1884,14 @@ class Team:
 
         # 2. Get a response from the model
         full_model_response = ModelResponse()
-        model_stream = self.model.aresponse_stream(messages=run_messages.messages)
+        model_stream = self.model.aresponse_stream(
+            messages=run_messages.messages,
+            response_format=response_format,
+            tools=self._tools_for_model,
+            functions=self._functions_for_model,
+            tool_choice=self.tool_choice,
+            tool_call_limit=self.tool_call_limit,
+        )  # type: ignore
         async for model_response_chunk in model_stream:
             # If the model response is an assistant_response, yield a RunResponse
             if model_response_chunk.event == ModelResponseEvent.assistant_response.value:
@@ -2222,6 +2266,40 @@ class Team:
         # Update the session summary if needed
         if self.enable_session_summaries:
             await self.memory.acreate_session_summary(session_id=session_id, user_id=user_id)
+
+    def _get_response_format(self) -> Optional[Union[Dict, Type[BaseModel]]]:
+        self.model = cast(Model, self.model)
+        if self.response_model is None:
+            return None
+        else:
+            json_response_format = {"type": "json_object"}
+
+            if self.model.supports_native_structured_outputs:
+                if not self.use_json_mode:
+                    log_debug("Setting Model.response_format to Agent.response_model")
+                    return self.response_model
+                else:
+                    log_debug(
+                        "Model supports native structured outputs but it is not enabled. Using JSON mode instead."
+                    )
+                    return json_response_format
+
+            elif self.model.supports_json_schema_outputs:
+                if self.use_json_mode:
+                    log_debug("Setting Model.response_format to JSON response mode")
+                    return {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": self.response_model.__name__,
+                            "schema": self.response_model.model_json_schema(),
+                        },
+                    }
+                else:
+                    return None
+
+            else:
+                log_debug("Model does not support structured or JSON schema outputs.")
+                return json_response_format
 
     ###########################################################################
     # Print Response
@@ -4457,140 +4535,87 @@ class Team:
             else:
                 log_warning("Context is not a dict")
 
-    def _configure_model(self, show_tool_calls: bool = False) -> None:
-        self._set_default_model()
+    def determine_tools_for_model(self, model: Model, tools: List[Union[Function, Callable, Toolkit, Dict]]) -> None:
+        if self._tools_for_model is None:
+            self._functions_for_model = {}
+            self._tools_for_model = []
 
-        self.model = cast(Model, self.model)
+            # Get Agent tools
+            if len(tools) > 0:
+                log_debug("Processing tools for model")
 
-        # Update the response_format on the Model
-        if self.response_model is None:
-            self.model.response_format = None
-        else:
-            json_response_format = {"type": "json_object"}
+                # Check if we need strict mode for the model
+                strict = False
+                if (
+                    self.response_model is not None
+                    and not self.use_json_mode
+                    and model.supports_native_structured_outputs
+                ):
+                    strict = True
 
-            if self.model.supports_native_structured_outputs:
-                if self.use_json_mode:
-                    self.model.response_format = json_response_format
-                    self.model.structured_outputs = False
-                else:
-                    log_debug("Setting Model.response_format to Agent.response_model")
-                    self.model.response_format = self.response_model
-                    self.model.structured_outputs = True
+                for tool in tools:
+                    if isinstance(tool, Dict):
+                        # If a dict is passed, it is a builtin tool
+                        # that is run by the model provider and not the Agent
+                        self._tools_for_model.append(tool)
+                        log_debug(f"Included builtin tool {tool}")
 
-            elif self.model.supports_json_schema_outputs:
-                if self.use_json_mode:
-                    log_debug("Setting Model.response_format to JSON response mode")
-                    self.model.response_format = {
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": self.response_model.__name__,
-                            "schema": self.response_model.model_json_schema(),
-                        },
-                    }
-                else:
-                    self.model.response_format = None
-                self.model.structured_outputs = False
+                    elif isinstance(tool, Toolkit):
+                        # For each function in the toolkit and process entrypoint
+                        for name, func in tool.functions.items():
+                            # If the function does not exist in self.functions
+                            if name not in self._functions_for_model:
+                                func._agent = self
+                                func._team = self
+                                func.process_entrypoint(strict=strict)
+                                if strict:
+                                    func.strict = True
+                                if self.tool_hooks:
+                                    func.tool_hooks = self.tool_hooks
+                                self._functions_for_model[name] = func
+                                self._tools_for_model.append({"type": "function", "function": func.to_dict()})
+                                log_debug(f"Added tool {name} from {tool.name}")
 
-            else:
-                log_debug("Model does not support structured or JSON schema outputs.")
-                self.model.response_format = json_response_format if self.use_json_mode else None
-                self.model.structured_outputs = False
+                        # Add instructions from the toolkit
+                        if tool.add_instructions and tool.instructions is not None:
+                            if self._tool_instructions is None:
+                                self._tool_instructions = []
+                            self._tool_instructions.append(tool.instructions)
 
-            log_debug(f"Structured outputs: {self.model.structured_outputs}")
+                    elif isinstance(tool, Function):
+                        if tool.name not in self._functions_for_model:
+                            tool._agent = self
+                            tool._team = self
+                            tool.process_entrypoint(strict=strict)
+                            if strict and tool.strict is None:
+                                tool.strict = True
+                            if self.tool_hooks:
+                                tool.tool_hooks = self.tool_hooks
+                            self._functions_for_model[tool.name] = tool
+                            self._tools_for_model.append({"type": "function", "function": tool.to_dict()})
+                            log_debug(f"Added tool {tool.name}")
 
-        # Set show_tool_calls on the Model
-        self.model.show_tool_calls = show_tool_calls
+                        # Add instructions from the Function
+                        if tool.add_instructions and tool.instructions is not None:
+                            if self._tool_instructions is None:
+                                self._tool_instructions = []
+                            self._tool_instructions.append(tool.instructions)
 
-        # Set tool_choice on the Model
-        if self.tool_choice is not None:
-            self.model.tool_choice = self.tool_choice
-
-        # Set tool_call_limit on the Model
-        if self.tool_call_limit is not None:
-            self.model.tool_call_limit = self.tool_call_limit
-
-    def _add_tools_to_model(self, model: Model, tools: List[Union[Function, Callable, Toolkit, Dict]]) -> None:
-        # We have to reset for every run, because we will have new images/audio/video to attach
-        _functions_for_model: Dict[str, Function] = {}
-        _tools_for_model: List[Dict] = []
-
-        # Get Agent tools
-        if len(tools) > 0:
-            log_debug("Processing tools for model")
-
-            # Check if we need strict mode for the model
-            strict = False
-            if self.response_model is not None and not self.use_json_mode and model.supports_native_structured_outputs:
-                strict = True
-
-            for tool in tools:
-                if isinstance(tool, Dict):
-                    # If a dict is passed, it is a builtin tool
-                    # that is run by the model provider and not the Agent
-                    _tools_for_model.append(tool)
-                    log_debug(f"Included builtin tool {tool}")
-
-                elif isinstance(tool, Toolkit):
-                    # For each function in the toolkit and process entrypoint
-                    for name, func in tool.functions.items():
-                        # If the function does not exist in self.functions
-                        if name not in _functions_for_model:
+                    elif callable(tool):
+                        # We add the tools, which are callable functions
+                        try:
+                            func = Function.from_callable(tool, strict=strict)
                             func._agent = self
                             func._team = self
-                            func.process_entrypoint(strict=strict)
                             if strict:
                                 func.strict = True
                             if self.tool_hooks:
                                 func.tool_hooks = self.tool_hooks
-                            _functions_for_model[name] = func
-                            _tools_for_model.append({"type": "function", "function": func.to_dict()})
-                            log_debug(f"Added tool {name} from {tool.name}")
-
-                    # Add instructions from the toolkit
-                    if tool.add_instructions and tool.instructions is not None:
-                        if self._tool_instructions is None:
-                            self._tool_instructions = []
-                        self._tool_instructions.append(tool.instructions)
-
-                elif isinstance(tool, Function):
-                    if tool.name not in _functions_for_model:
-                        tool._agent = self
-                        tool._team = self
-                        tool.process_entrypoint(strict=strict)
-                        if strict and tool.strict is None:
-                            tool.strict = True
-                        if self.tool_hooks:
-                            tool.tool_hooks = self.tool_hooks
-                        _functions_for_model[tool.name] = tool
-                        _tools_for_model.append({"type": "function", "function": tool.to_dict()})
-                        log_debug(f"Added tool {tool.name}")
-
-                    # Add instructions from the Function
-                    if tool.add_instructions and tool.instructions is not None:
-                        if self._tool_instructions is None:
-                            self._tool_instructions = []
-                        self._tool_instructions.append(tool.instructions)
-
-                elif callable(tool):
-                    # We add the tools, which are callable functions
-                    try:
-                        func = Function.from_callable(tool, strict=strict)
-                        func._agent = self
-                        func._team = self
-                        if strict:
-                            func.strict = True
-                        if self.tool_hooks:
-                            func.tool_hooks = self.tool_hooks
-                        _functions_for_model[func.name] = func
-                        _tools_for_model.append({"type": "function", "function": func.to_dict()})
-                        log_debug(f"Added tool {func.name}")
-                    except Exception as e:
-                        log_warning(f"Could not add tool {tool}: {e}")
-
-            # Set tools on the model
-            model.set_tools(tools=_tools_for_model)
-            # Set functions on the model
-            model.set_functions(functions=_functions_for_model)
+                            self._functions_for_model[func.name] = func
+                            self._tools_for_model.append({"type": "function", "function": func.to_dict()})
+                            log_debug(f"Added tool {func.name}")
+                        except Exception as e:
+                            log_warning(f"Could not add tool {tool}: {e}")
 
     def get_members_system_message_content(self, indent: int = 0) -> str:
         system_message_content = ""
@@ -4648,7 +4673,7 @@ class Team:
                 instructions.extend(_instructions)
 
         # 1.2 Add instructions from the Model
-        _model_instructions = self.model.get_instructions_for_model()
+        _model_instructions = self.model.get_instructions_for_model(self._tools_for_model)
         if _model_instructions is not None:
             instructions.extend(_model_instructions)
 
@@ -4836,6 +4861,21 @@ class Team:
             for _ai in additional_information:
                 system_message_content += f"\n- {_ai}"
             system_message_content += "\n</additional_information>\n"
+        # 3.3.7 Then add instructions for the tools
+        if self._tool_instructions is not None:
+            for _ti in self._tool_instructions:
+                system_message_content += f"{_ti}\n"
+
+        # Format the system message with the session state variables
+        if self.add_state_in_messages:
+            system_message_content = self._format_message_with_state_variables(system_message_content, user_id=user_id)
+
+        system_message_from_model = self.model.get_system_message_for_model(self._tools_for_model)
+        if system_message_from_model is not None:
+            system_message_content += system_message_from_model
+
+        if self.expected_output is not None:
+            system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
 
         if self.additional_context is not None:
             system_message_content += (
@@ -6236,7 +6276,7 @@ class Team:
         Recursively search through team members and subteams to find an agent by name.
 
         Args:
-            agent_name (str): Name of the agent to find
+            member_id (str): ID of the agent to find
 
         Returns:
             Optional[Tuple[int, Union[Agent, "Team"], Optional[str]]]: Tuple containing:
@@ -7137,9 +7177,11 @@ class Team:
             run_response_format = "markdown"
 
         functions = {}
-        if self.model is not None and self.model._functions is not None:
+        if self._functions_for_model:
             functions = {
-                f_name: func.to_dict() for f_name, func in self.model._functions.items() if isinstance(func, Function)
+                f_name: func.to_dict()
+                for f_name, func in self._functions_for_model.items()
+                if isinstance(func, Function)
             }
 
         run_data: Dict[str, Any] = {
@@ -7179,11 +7221,11 @@ class Team:
         if self.session_metrics is not None:
             session_data["session_metrics"] = asdict(self.session_metrics) if self.session_metrics is not None else None
         if self.images is not None:
-            session_data["images"] = [img.model_dump() for img in self.images]  # type: ignore
+            session_data["images"] = [img.to_dict() for img in self.images]  # type: ignore
         if self.videos is not None:
-            session_data["videos"] = [vid.model_dump() for vid in self.videos]  # type: ignore
+            session_data["videos"] = [vid.to_dict() for vid in self.videos]  # type: ignore
         if self.audio is not None:
-            session_data["audio"] = [aud.model_dump() for aud in self.audio]  # type: ignore
+            session_data["audio"] = [aud.to_dict() for aud in self.audio]  # type: ignore
         return session_data
 
     def _get_team_session(self, session_id: str, user_id: Optional[str] = None) -> TeamSession:
@@ -7192,6 +7234,7 @@ class Team:
         """Get an TeamMemory object, which can be saved to the database"""
         title = self.team_session.title if self.team_session else None
         summary = self.team_session.summary if self.team_session else None
+        memory_dict = None
         if self.memory is not None:
             if isinstance(self.memory, TeamMemory):
                 self.memory = cast(TeamMemory, self.memory)
@@ -7206,8 +7249,6 @@ class Team:
                         memory_dict["runs"] = [rr.to_dict() for rr in run_responses]
                 if title is None:
                     title = self.memory.summaries.get(user_id, {}).get(session_id, SessionSummary(summary=None)).summary
-        else:
-            memory_dict = None
 
         return TeamSession(
             session_id=session_id,

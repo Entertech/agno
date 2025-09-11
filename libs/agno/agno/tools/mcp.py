@@ -6,13 +6,14 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from agno.tools import Toolkit
 from agno.tools.function import Function
-from agno.utils.log import log_debug, log_warning, logger
+from agno.utils.log import log_debug, log_warning, log_warning, logger
 from agno.utils.mcp import get_entrypoint_for_tool
 
 try:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.sse import sse_client
     from mcp.client.stdio import get_default_environment, stdio_client
+    from mcp.client.streamable_http import streamablehttp_client
     from mcp.client.streamable_http import streamablehttp_client
 except (ImportError, ModuleNotFoundError):
     raise ImportError("`mcp` not installed. Please install using `pip install mcp`")
@@ -160,21 +161,16 @@ class MCPTools(Toolkit):
 
         # Create a new session using stdio_client, sse_client or streamablehttp_client based on transport
         if self.transport == "sse":
-            sse_params = asdict(self.server_params) if self.server_params is not None else {}  # type: ignore
+            sse_params = asdict(self.server_params) if self.server_params is not None else {}
             if "url" not in sse_params:
                 sse_params["url"] = self.url
-            self._context = sse_client(**sse_params)  # type: ignore
-            client_timeout = min(self.timeout_seconds, sse_params.get("timeout", self.timeout_seconds))
+            self._context = sse_client(**sse_params)
         elif self.transport == "streamable-http":
-            streamable_http_params = asdict(self.server_params) if self.server_params is not None else {}  # type: ignore
+            streamable_http_params = asdict(self.server_params) if self.server_params is not None else {}
             if "url" not in streamable_http_params:
                 streamable_http_params["url"] = self.url
-            self._context = streamablehttp_client(**streamable_http_params)  # type: ignore
-            params_timeout = streamable_http_params.get("timeout", self.timeout_seconds)
-            if isinstance(params_timeout, timedelta):
-                params_timeout = int(params_timeout.total_seconds())
-            client_timeout = min(self.timeout_seconds, params_timeout)
-        else:
+            self._context = streamablehttp_client(**streamable_http_params)
+        elif self.transport == "stdio":
             if self.server_params is None:
                 raise ValueError("server_params must be provided when using stdio transport.")
             self._context = stdio_client(self.server_params)  # type: ignore
@@ -183,7 +179,7 @@ class MCPTools(Toolkit):
         session_params = await self._context.__aenter__()  # type: ignore
         read, write = session_params[0:2]
 
-        self._session_context = ClientSession(read, write, read_timeout_seconds=timedelta(seconds=client_timeout))  # type: ignore
+        self._session_context = ClientSession(read, write, read_timeout_seconds=timedelta(seconds=self.timeout_seconds))  # type: ignore
         self.session = await self._session_context.__aenter__()  # type: ignore
 
         # Initialize with the new session
@@ -311,6 +307,7 @@ class MultiMCPTools(Toolkit):
             else:
                 if len(urls) != len(urls_transports):
                     raise ValueError("urls and urls_transports must be of the same length")
+
         # Set these after `__init__` to bypass the `_check_tools_filters`
         # beacuse tools are not available until `initialize()` is called.
         self.include_tools = include_tools
