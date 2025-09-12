@@ -205,8 +205,6 @@ class Team:
     enable_session_summaries: bool = False
     # If True, the agent adds a reference to the session summaries in the response
     add_session_summary_references: Optional[bool] = None
-    # If True, the agent creates/updates user memories asynchronously
-    make_user_memories_create_and_update_async: bool = False
 
     # --- Team History ---
     # If True, enable the team history
@@ -293,7 +291,6 @@ class Team:
         add_memory_references: Optional[bool] = None,
         enable_session_summaries: bool = False,
         add_session_summary_references: Optional[bool] = None,
-        make_user_memories_create_and_update_async: bool = False,
         enable_team_history: bool = False,
         num_of_interactions_from_history: Optional[int] = None,
         num_history_runs: int = 3,
@@ -365,7 +362,6 @@ class Team:
         self.add_memory_references = add_memory_references
         self.enable_session_summaries = enable_session_summaries
         self.add_session_summary_references = add_session_summary_references
-        self.make_user_memories_create_and_update_async = make_user_memories_create_and_update_async
         self.enable_team_history = enable_team_history
         self.num_of_interactions_from_history = num_of_interactions_from_history
         self.num_history_runs = num_history_runs
@@ -411,8 +407,6 @@ class Team:
         self._member_response_model: Optional[Type[BaseModel]] = None
 
         self._formatter: Optional[SafeFormatter] = None
-
-        self.is_conversation_over: bool = False
 
     def _set_team_id(self) -> str:
         if self.team_id is None:
@@ -912,7 +906,6 @@ class Team:
 
         # 6. Save session to storage
         self.write_to_storage(session_id=session_id, user_id=user_id)
-        self.is_conversation_over = True
         # 7. Parse team response model
         if self.response_model is not None and not isinstance(run_response.content, self.response_model):
             if isinstance(run_response.content, str) and self.parse_response:
@@ -1004,7 +997,6 @@ class Team:
 
         # 4. Save session to storage
         self.write_to_storage(session_id=session_id, user_id=user_id)
-        self.is_conversation_over = True
         # 5. Log Team Run
         self._log_team_run(session_id=session_id, user_id=user_id)
 
@@ -1582,22 +1574,7 @@ class Team:
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
 
-            async def _amake_memories_and_summaries(run_messages: RunMessages, session_id: str, user_id: Optional[str] = None):
-                await self._amake_memories_and_summaries(
-                    run_messages, session_id, user_id
-                )
-                self.write_to_storage(session_id=session_id, user_id=user_id)
-            self.is_conversation_over = False
-            if self.make_user_memories_create_and_update_async:
-                asyncio.create_task(
-                    _amake_memories_and_summaries(
-                        run_messages, session_id, user_id
-                    )
-                )
-            else:
-                self._make_memories_and_summaries(
-                    run_messages, session_id, user_id
-                )
+            self._make_memories_and_summaries(run_messages, session_id, user_id)
 
             session_messages: List[Message] = []
             for run in self.memory.runs.get(session_id, []):  # type: ignore
@@ -1654,23 +1631,7 @@ class Team:
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
 
-            async def _amake_memories_and_summaries(run_messages: RunMessages, session_id: str, user_id: Optional[str] = None):
-                await self._amake_memories_and_summaries(
-                    run_messages, session_id, user_id
-                )
-                self.write_to_storage(session_id=session_id, user_id=user_id)
-
-            self.is_conversation_over = False
-            if self.make_user_memories_create_and_update_async:
-                asyncio.create_task(
-                    _amake_memories_and_summaries(
-                        run_messages, session_id, user_id
-                    )
-                )
-            else:
-                await _amake_memories_and_summaries(
-                    run_messages, session_id, user_id
-                )
+            await self._amake_memories_and_summaries(run_messages, session_id, user_id)
 
             session_messages: List[Message] = []
             for run in self.memory.runs.get(session_id, []):  # type: ignore
@@ -2050,9 +2011,6 @@ class Team:
     async def _amake_memories_and_summaries(
         self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None
     ) -> None:
-        while not self.is_conversation_over and self.make_user_memories_create_and_update_async:
-            await asyncio.sleep(0.1)
-
         self.memory = cast(Memory, self.memory)
         user_message_str = (
             run_messages.user_message.get_content_string() if run_messages.user_message is not None else None
