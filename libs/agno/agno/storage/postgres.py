@@ -101,6 +101,8 @@ class PostgresStorage(Storage):
         common_columns = [
             Column("session_id", String, primary_key=True),
             Column("user_id", String, index=True),
+            Column("title", String, index=True, nullable=True),
+            Column("summary", String, index=True, nullable=True),
             Column("memory", postgresql.JSONB),
             Column("session_data", postgresql.JSONB),
             Column("extra_data", postgresql.JSONB),
@@ -387,6 +389,47 @@ class PostgresStorage(Storage):
                         sess.commit()
                         self._schema_up_to_date = True
                         log_info("Schema upgrade completed successfully")
+            elif self.mode == "team" and self.table_exists():
+                with self.Session() as sess:
+                    # Check if title column exists
+                    column_exists_query = text(
+                        """
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = :schema AND table_name = :table
+                        AND column_name = 'title'
+                        """
+                    )
+                    column_exists = (
+                        sess.execute(column_exists_query, {"schema": self.schema, "table": self.table_name}).scalar()
+                        is not None
+                    )
+                    if not column_exists:
+                        log_info(f"Adding 'title' column to {self.schema}.{self.table_name}")
+                        alter_table_query = text(f"ALTER TABLE {self.schema}.{self.table_name} ADD COLUMN title TEXT")
+                        sess.execute(alter_table_query)
+                        sess.commit()
+                        self._schema_up_to_date = True
+                        log_info("Schema upgrade completed successfully")
+                    # Check if summary column exists
+                    column_exists_query = text(
+                        """
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = :schema AND table_name = :table
+                        AND column_name = 'summary'
+                        """
+                    )
+                    column_exists = (
+                        sess.execute(column_exists_query, {"schema": self.schema, "table": self.table_name}).scalar()
+                        is not None
+                    )
+                    if not column_exists:
+                        log_info(f"Adding 'summary' column to {self.schema}.{self.table_name}")
+                        alter_table_query = text(f"ALTER TABLE {self.schema}.{self.table_name} ADD COLUMN summary TEXT")
+                        sess.execute(alter_table_query)
+                        sess.commit()
+                        self._schema_up_to_date = True
+                        log_info("Schema upgrade completed successfully")
+
         except Exception as e:
             logger.error(f"Error during schema upgrade: {e}")
             raise
@@ -416,6 +459,8 @@ class PostgresStorage(Storage):
                         team_session_id=session.team_session_id,  # type: ignore
                         user_id=session.user_id,
                         memory=session.memory,
+                        title=session.title,
+                        summary=session.summary,
                         agent_data=session.agent_data,  # type: ignore
                         session_data=session.session_data,
                         extra_data=session.extra_data,
@@ -429,6 +474,8 @@ class PostgresStorage(Storage):
                             team_session_id=session.team_session_id,  # type: ignore
                             user_id=session.user_id,
                             memory=session.memory,
+                            title=session.title,
+                            summary=session.summary,
                             agent_data=session.agent_data,  # type: ignore
                             session_data=session.session_data,
                             extra_data=session.extra_data,
@@ -442,6 +489,8 @@ class PostgresStorage(Storage):
                         user_id=session.user_id,
                         team_session_id=session.team_session_id,  # type: ignore
                         memory=session.memory,
+                        title=session.title,
+                        summary=session.summary,
                         team_data=session.team_data,  # type: ignore
                         session_data=session.session_data,
                         extra_data=session.extra_data,
@@ -455,6 +504,8 @@ class PostgresStorage(Storage):
                             user_id=session.user_id,
                             team_session_id=session.team_session_id,  # type: ignore
                             memory=session.memory,
+                            title=session.title,
+                            summary=session.summary,
                             team_data=session.team_data,  # type: ignore
                             session_data=session.session_data,
                             extra_data=session.extra_data,
@@ -467,6 +518,8 @@ class PostgresStorage(Storage):
                         workflow_id=session.workflow_id,  # type: ignore
                         user_id=session.user_id,
                         memory=session.memory,
+                        title=session.title,
+                        summary=session.summary,
                         workflow_data=session.workflow_data,  # type: ignore
                         session_data=session.session_data,
                         extra_data=session.extra_data,
@@ -479,6 +532,8 @@ class PostgresStorage(Storage):
                             workflow_id=session.workflow_id,  # type: ignore
                             user_id=session.user_id,
                             memory=session.memory,
+                            title=session.title,
+                            summary=session.summary,
                             workflow_data=session.workflow_data,  # type: ignore
                             session_data=session.session_data,
                             extra_data=session.extra_data,

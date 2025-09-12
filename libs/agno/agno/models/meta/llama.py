@@ -36,7 +36,6 @@ class Llama(Model):
     id: str = "Llama-4-Maverick-17B-128E-Instruct-FP8"
     name: str = "Llama"
     provider: str = "Llama"
-
     supports_native_structured_outputs: bool = False
     supports_json_schema_outputs: bool = True
 
@@ -154,6 +153,12 @@ class Llama(Model):
         if tools is not None and len(tools) > 0:
             request_params["tools"] = tools
 
+            # Fix optional parameters where the "type" is [<type>, null]
+            for tool in request_params["tools"]:  # type: ignore
+                if "parameters" in tool["function"] and "properties" in tool["function"]["parameters"]:  # type: ignore
+                    for _, obj in tool["function"]["parameters"].get("properties", {}).items():  # type: ignore
+                        if isinstance(obj["type"], list):
+                            obj["type"] = obj["type"][0]
         if response_format is not None:
             request_params["response_format"] = response_format
 
@@ -328,6 +333,18 @@ class Llama(Model):
         # Get response message
         response_message = response.completion_message
 
+        # Parse structured outputs if enabled
+        try:
+            if (
+                self.response_format is not None
+                and self.structured_outputs
+                and issubclass(self.response_format, BaseModel)
+            ):
+                parsed_object = response_message.content  # type: ignore
+                if parsed_object is not None:
+                    model_response.parsed = parsed_object
+        except Exception as e:
+            log_warning(f"Error retrieving structured outputs: {e}")
         # Add role
         if response_message.role is not None:
             model_response.role = response_message.role

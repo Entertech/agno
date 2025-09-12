@@ -573,6 +573,12 @@ class Gemini(Model):
                 file_uri=video.url,
                 mime_type=mime_type,
             )
+        # Case 3: Video is a URL
+        elif video.url is not None:
+            return Part.from_uri(
+                file_uri=video.url,
+                mime_type=f"video/{video.format}" if video.format else "video/webm",
+            )
         else:
             log_warning(f"Unknown video type: {type(video.content)}")
             return None
