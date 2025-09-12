@@ -1592,11 +1592,28 @@ class Agent:
             self.session_metrics = self.calculate_metrics(self.memory.messages)
         elif isinstance(self.memory, Memory):
             # Add AgentRun to memory
+            # Add AgentRun to memory
             self.memory.add_run(session_id=session_id, run=run_response)
 
-            await self._amake_memories_and_summaries(run_messages, session_id, user_id, messages)  # type: ignore
+            if self.make_user_memories_create_and_update_async:
+                asyncio.create_task(
+                    self._amake_memories_and_summaries(
+                        run_messages, session_id, user_id, messages
+                    )
+                )
+            else:
+                await self._amake_memories_and_summaries(
+                    run_messages, session_id, user_id, messages
+                )
 
-            # 4. Calculate metrics for the run
+            if self.session_metrics is None:
+                self.session_metrics = self.calculate_metrics(run_messages.messages)  # Calculate metrics for the run
+            else:
+                self.session_metrics += self.calculate_metrics(
+                    run_messages.messages
+                )  # Calculate metrics for the session
+
+            # 4. Calculate session metrics
             if self.session_metrics is None:
                 self.session_metrics = self.calculate_metrics(run_messages.messages)  # Calculate metrics for the run
             else:
@@ -4896,20 +4913,15 @@ class Agent:
             agent_session: AgentSession = self.agent_session or self.get_agent_session(
                 session_id=session_id, user_id=user_id
             )
-            run=AgentRunCreate(
+
+            await acreate_agent_run(
+                run=AgentRunCreate(
                     run_id=self.run_id,
                     run_data=run_data,
                     session_id=agent_session.session_id,
                     agent_data=agent_session.to_dict() if self.monitoring else agent_session.telemetry_data(),
                     team_session_id=agent_session.team_session_id,
-                )
-            agent_session_id=str(uuid4())
-            run.session_id=agent_session_id
-            run.run_data['run_response']['session_id']=agent_session_id
-            agent_session.session_id=agent_session_id
-            log_debug(f"Monitored agent_session_id: {agent_session_id}")
-            await acreate_agent_run(
-                run=run,
+                ),
                 monitor=self.monitoring,
             )
         except Exception as e:

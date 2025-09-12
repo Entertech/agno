@@ -912,7 +912,7 @@ class Team:
 
         # 6. Save session to storage
         self.write_to_storage(session_id=session_id, user_id=user_id)
-
+        self.is_conversation_over = True
         # 7. Parse team response model
         if self.response_model is not None and not isinstance(run_response.content, self.response_model):
             if isinstance(run_response.content, str) and self.parse_response:
@@ -1004,7 +1004,7 @@ class Team:
 
         # 4. Save session to storage
         self.write_to_storage(session_id=session_id, user_id=user_id)
-
+        self.is_conversation_over = True
         # 5. Log Team Run
         self._log_team_run(session_id=session_id, user_id=user_id)
 
@@ -1587,7 +1587,7 @@ class Team:
                     run_messages, session_id, user_id
                 )
                 self.write_to_storage(session_id=session_id, user_id=user_id)
-
+            self.is_conversation_over = False
             if self.make_user_memories_create_and_update_async:
                 asyncio.create_task(
                     _amake_memories_and_summaries(
@@ -1654,14 +1654,29 @@ class Team:
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
 
-            await self._amake_memories_and_summaries(run_messages, session_id, user_id)
+            async def _amake_memories_and_summaries(run_messages: RunMessages, session_id: str, user_id: Optional[str] = None):
+                await self._amake_memories_and_summaries(
+                    run_messages, session_id, user_id
+                )
+                self.write_to_storage(session_id=session_id, user_id=user_id)
+
+            self.is_conversation_over = False
+            if self.make_user_memories_create_and_update_async:
+                asyncio.create_task(
+                    _amake_memories_and_summaries(
+                        run_messages, session_id, user_id
+                    )
+                )
+            else:
+                await _amake_memories_and_summaries(
+                    run_messages, session_id, user_id
+                )
 
             session_messages: List[Message] = []
-            if self.memory.runs:
-                for run in self.memory.runs.get(session_id, []):
-                    if run.messages is not None:
-                        for m in run.messages:
-                            session_messages.append(m)
+            for run in self.memory.runs.get(session_id, []):  # type: ignore
+                if run.messages is not None:
+                    for m in run.messages:
+                        session_messages.append(m)
 
             # 10. Calculate session metrics
             self.session_metrics = self._calculate_session_metrics(session_messages)
