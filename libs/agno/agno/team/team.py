@@ -205,6 +205,8 @@ class Team:
     enable_session_summaries: bool = False
     # If True, the agent adds a reference to the session summaries in the response
     add_session_summary_references: Optional[bool] = None
+    # If True, the agent creates/updates user memories asynchronously
+    make_user_memories_create_and_update_async: bool = False
 
     # --- Team History ---
     # If True, enable the team history
@@ -291,6 +293,7 @@ class Team:
         add_memory_references: Optional[bool] = None,
         enable_session_summaries: bool = False,
         add_session_summary_references: Optional[bool] = None,
+        make_user_memories_create_and_update_async: bool = False,
         enable_team_history: bool = False,
         num_of_interactions_from_history: Optional[int] = None,
         num_history_runs: int = 3,
@@ -362,6 +365,7 @@ class Team:
         self.add_memory_references = add_memory_references
         self.enable_session_summaries = enable_session_summaries
         self.add_session_summary_references = add_session_summary_references
+        self.make_user_memories_create_and_update_async = make_user_memories_create_and_update_async
         self.enable_team_history = enable_team_history
         self.num_of_interactions_from_history = num_of_interactions_from_history
         self.num_history_runs = num_history_runs
@@ -1573,8 +1577,7 @@ class Team:
             self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages, session_id)
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
-
-            self._make_memories_and_summaries(run_messages, session_id, user_id)
+            self._handle_memory_management(run_messages, session_id, user_id, async_mode=False)
 
             session_messages: List[Message] = []
             for run in self.memory.runs.get(session_id, []):  # type: ignore
@@ -1630,8 +1633,7 @@ class Team:
 
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
-
-            await self._amake_memories_and_summaries(run_messages, session_id, user_id)
+            await self._ahandle_memory_management(run_messages, session_id, user_id)
 
             session_messages: List[Message] = []
             for run in self.memory.runs.get(session_id, []):  # type: ignore
@@ -2007,6 +2009,39 @@ class Team:
         # Update the session summary if needed
         if self.enable_session_summaries:
             self.memory.create_session_summary(session_id=session_id, user_id=user_id)
+
+    def _handle_memory_management(
+        self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None, async_mode: bool = False
+    ) -> None:
+        """Handle memory management with optional async execution."""
+        if self.make_user_memories_create_and_update_async:
+            # Create async task for memory management
+            asyncio.create_task(
+                self._amake_memories_and_summaries(run_messages, session_id, user_id)
+            )
+        else:
+            # Execute synchronously
+            if async_mode:
+                # In async context, we need to await
+                import asyncio
+                loop = asyncio.get_event_loop()
+                loop.create_task(self._amake_memories_and_summaries(run_messages, session_id, user_id))
+            else:
+                # In sync context, call sync method
+                self._make_memories_and_summaries(run_messages, session_id, user_id)
+
+    async def _ahandle_memory_management(
+        self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None
+    ) -> None:
+        """Handle memory management in async context."""
+        if self.make_user_memories_create_and_update_async:
+            # Create async task for memory management
+            asyncio.create_task(
+                self._amake_memories_and_summaries(run_messages, session_id, user_id)
+            )
+        else:
+            # Execute synchronously in async context
+            await self._amake_memories_and_summaries(run_messages, session_id, user_id)
 
     async def _amake_memories_and_summaries(
         self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None
