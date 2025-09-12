@@ -389,16 +389,23 @@ class Milvus(VectorDb):
                 document.embed(embedder=self.embedder)
                 cleaned_content = document.content.replace("\x00", "\ufffd")
                 doc_id = md5(cleaned_content.encode()).hexdigest()
+<<<<<<< HEAD
+=======
 
                 meta_data = document.meta_data or {}
                 if filters:
                     meta_data.update(filters)
 
+>>>>>>> v1.5.1
                 data = {
                     "id": doc_id,
                     "vector": document.embedding,
                     "name": document.name,
+<<<<<<< HEAD
+                    "meta_data": document.meta_data,
+=======
                     "meta_data": meta_data,
+>>>>>>> v1.5.1
                     "content": cleaned_content,
                     "usage": document.usage,
                 }
@@ -406,7 +413,11 @@ class Milvus(VectorDb):
                     collection_name=self.collection,
                     data=data,
                 )
+<<<<<<< HEAD
+                log_debug(f"Inserted document: {document.name} ({document.meta_data})")
+=======
                 log_debug(f"Inserted document: {document.name} ({meta_data})")
+>>>>>>> v1.5.1
 
         log_info(f"Inserted {len(documents)} documents")
 
@@ -422,6 +433,23 @@ class Milvus(VectorDb):
                 document.embed(embedder=self.embedder)
                 cleaned_content = document.content.replace("\x00", "\ufffd")
                 doc_id = md5(cleaned_content.encode()).hexdigest()
+<<<<<<< HEAD
+                data = {
+                    "id": doc_id,
+                    "vector": document.embedding,
+                    "name": document.name,
+                    "meta_data": document.meta_data,
+                    "content": cleaned_content,
+                    "usage": document.usage,
+                }
+                await self.async_client.insert(
+                    collection_name=self.collection,
+                    data=data,
+                )
+                log_debug(f"Inserted document asynchronously: {document.name} ({document.meta_data})")
+                return data
+
+=======
 
                 meta_data = document.meta_data or {}
                 if filters:
@@ -442,6 +470,7 @@ class Milvus(VectorDb):
                 log_debug(f"Inserted document asynchronously: {document.name} ({document.meta_data})")
                 return data
 
+>>>>>>> v1.5.1
             await asyncio.gather(*[process_document(doc) for doc in documents])
 
         log_info(f"Inserted {len(documents)} documents asynchronously")

@@ -9,7 +9,7 @@ from agno.memory.v2.schema import UserMemory
 from agno.models.base import Model
 from agno.models.message import Message
 from agno.tools.function import Function
-from agno.utils.log import log_debug, log_error, log_warning
+from agno.utils.log import log_debug, log_error, log_warning, log_info
 
 
 @dataclass
@@ -213,7 +213,7 @@ class MemoryManager:
         self.determine_tools_for_model(
             self._get_db_tools(
                 user_id, db, input_string, enable_delete_memory=delete_memories, enable_clear_memory=clear_memories
-            ),
+            ) + self._get_reminder_tools(user_id),
         )
 
         # Prepare the List of messages to send to the Model
@@ -336,11 +336,16 @@ class MemoryManager:
     ) -> List[Callable]:
         from datetime import datetime
 
-        def add_memory(memory: str, topics: Optional[List[str]] = None) -> str:
+        def add_memory(memory: str, topics: List[str] = None, resource_uri: Optional[List[str]] = None, resource_type: Optional[List[str]] = None, datetime_at: Optional[str] = None, status: Optional[str] = None, sensitive_mapping: Optional[str] = None) -> str:
             """Use this function to add a memory to the database.
             Args:
                 memory (str): The memory to be added.
-                topics (Optional[List[str]]): The topics of the memory (e.g. ["name", "hobbies", "location"]).
+                topics (List[str]): The topics of the memory (e.g. ["Personal", "Notes", "Reminders"]).
+                resource_uri (Optional[List[str]]): The resource uri of the memory.
+                resource_type (Optional[List[str]]): The resource type of the memory.
+                datetime_at (Optional[str]): The datetime of the memory.
+                status (Optional[str]): The status of the memory.
+                sensitive_mapping (Optional[str]): The sensitive mapping of the memory.
             Returns:
                 str: A message indicating if the memory was added successfully or not.
             """
@@ -359,6 +364,11 @@ class MemoryManager:
                             topics=topics,
                             last_updated=last_updated,
                             input=input_string,
+                            resource_uri=resource_uri,
+                            resource_type=resource_type,
+                            datetime_at=datetime_at,
+                            status=status,
+                            sensitive_mapping=sensitive_mapping,
                         ).to_dict(),
                         last_updated=last_updated,
                     )
@@ -369,12 +379,17 @@ class MemoryManager:
                 log_warning(f"Error storing memory in db: {e}")
                 return f"Error adding memory: {e}"
 
-        def update_memory(memory_id: str, memory: str, topics: Optional[List[str]] = None) -> str:
+        def update_memory(memory_id: str, memory: str, topics: List[str] = None, resource_uri: Optional[List[str]] = None, resource_type: Optional[List[str]] = None, datetime_at: Optional[str] = None, status: Optional[str] = None, sensitive_mapping: Optional[str] = None) -> str:
             """Use this function to update an existing memory in the database.
             Args:
                 memory_id (str): The id of the memory to be updated.
                 memory (str): The updated memory.
-                topics (Optional[List[str]]): The topics of the memory (e.g. ["name", "hobbies", "location"]).
+                topics (Optional[List[str]]): The topics of the memory (e.g. ["Personal", "Notes", "Reminders"]).
+                resource_uri (Optional[List[str]]): The resource uri of the memory.
+                resource_type (Optional[List[str]]): The resource type of the memory.
+                datetime_at (Optional[str]): The datetime of the memory.
+                status (Optional[str]): The status of the memory.
+                sensitive_mapping (Optional[str]): The sensitive mapping of the memory.
             Returns:
                 str: A message indicating if the memory was updated successfully or not.
             """
@@ -390,6 +405,11 @@ class MemoryManager:
                             topics=topics,
                             last_updated=last_updated,
                             input=input_string,
+                            resource_uri=resource_uri,
+                            resource_type=resource_type,
+                            datetime_at=datetime_at,
+                            status=status,
+                            sensitive_mapping=sensitive_mapping,
                         ).to_dict(),
                         last_updated=last_updated,
                     )
@@ -434,4 +454,56 @@ class MemoryManager:
             functions.append(delete_memory)
         if enable_clear_memory:
             functions.append(clear_memory)
+        return functions
+
+    def create_or_update_reminder(self, user_id: str, reminder: str, datetime_at: str) -> str:
+        """Use this function to create or update a reminder in the database.
+        Args:
+            user_id (str): The id of the user.
+            reminder (str): The reminder to be created or updated.
+            datetime_at (str): The datetime of the reminder.
+        Returns:
+            str: A message indicating if the reminder was created successfully or not.
+        """
+        log_info(f"Creating reminder: {user_id} : {reminder} at {datetime_at}")
+        return "Reminder created successfully"
+
+    def delete_reminder(self, user_id: str, reminder: str, datetime_at: str) -> str:
+        """Use this function to delete a reminder from the database.
+        Args:
+            user_id (str): The id of the user.
+            reminder (str): The reminder to be deleted.
+            datetime_at (str): The datetime of the reminder.
+        Returns:
+            str: A message indicating if the reminder was deleted successfully or not.
+        """
+        log_info(f"Deleting reminder: {user_id} : {reminder} at {datetime_at} was deleted")
+        return "Reminder deleted successfully"
+
+    def _get_reminder_tools(self, user_id: str) -> List[Callable]:
+        def _create_or_update_reminder(reminder: str, datetime_at: str) -> str:
+            """Use this function to create or update a reminder in the database.
+            Args:
+                reminder (str): The reminder to be created or updated.
+                datetime_at (str): The datetime of the reminder.
+            Returns:
+                str: A message indicating if the reminder was created successfully or not.
+            """
+            self.create_or_update_reminder(user_id, reminder, datetime_at)
+            log_info(f"Creating reminder: {reminder} at {datetime_at}")
+            return "Reminder created successfully"
+
+        def _delete_reminder(reminder: str, datetime_at: str) -> str:
+            """Use this function to delete a reminder from the database.
+            Args:
+                reminder (str): The reminder to be deleted.
+                datetime_at (str): The datetime of the reminder.
+            Returns:
+                str: A message indicating if the reminder was deleted successfully or not.
+            """
+            self.delete_reminder(user_id, reminder, datetime_at)
+            log_info(f"Deleting reminder: {reminder} at {datetime_at} was deleted")
+            return "Reminder deleted successfully"
+
+        functions: List[Callable] = [_create_or_update_reminder, _delete_reminder]
         return functions

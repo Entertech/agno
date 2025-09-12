@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from os import getenv
+import time
 from typing import Any, Dict, Iterator, List, Optional, Type, Union
 
 import httpx
@@ -11,7 +12,7 @@ from agno.media import AudioResponse
 from agno.models.base import Model
 from agno.models.message import Message
 from agno.models.response import ModelResponse
-from agno.utils.log import log_error, log_warning
+from agno.utils.log import log_error, log_info, log_warning
 from agno.utils.openai import _format_file_for_message, audio_to_message, images_to_message
 
 try:
@@ -133,8 +134,8 @@ class OpenAIChat(Model):
             AsyncOpenAIClient: An instance of the asynchronous OpenAI client.
         """
         client_params: Dict[str, Any] = self._get_client_params()
-        if self.http_client:
-            client_params["http_client"] = self.http_client
+        if self.http_client or OpenAIChat.http_client:
+            client_params["http_client"] = self.http_client or OpenAIChat.http_client
         else:
             # Create a new async HTTP client with custom limits
             client_params["http_client"] = httpx.AsyncClient(
@@ -512,14 +513,22 @@ class OpenAIChat(Model):
         """
 
         try:
-            async_stream = await self.get_async_client().chat.completions.create(
+            client = self.get_async_client()
+            start_time = time.time()
+            async_stream = await client.chat.completions.create(
                 model=self.id,
                 messages=[self._format_message(m) for m in messages],  # type: ignore
                 stream=True,
                 stream_options={"include_usage": True},
                 **self.get_request_kwargs(response_format=response_format, tools=tools, tool_choice=tool_choice),
             )
+            end_time = time.time()
+            log_info(f"stream connected time: {end_time - start_time} seconds")
+            first_token_time = 0
             async for chunk in async_stream:
+                if first_token_time == 0:
+                    first_token_time = time.time()
+                    log_info(f"stream first token time: {first_token_time - end_time} seconds")
                 yield chunk
         except RateLimitError as e:
             log_error(f"Rate limit error from OpenAI API: {e}")

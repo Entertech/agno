@@ -77,7 +77,7 @@ class Team:
 
     members: List[Union[Agent, "Team"]]
 
-    mode: Literal["route", "coordinate", "collaborate"] = "coordinate"
+    mode: Literal["route", "coordinate", "collaborate", "direct"] = "coordinate"
 
     # Model for this Team
     model: Optional[Model] = None
@@ -167,6 +167,8 @@ class Team:
     tools: Optional[List[Union[Toolkit, Callable, Function, Dict]]] = None
     # Show tool calls in Team response. This sets the default for the team.
     show_tool_calls: bool = True
+    # If True, show the tool calls details in the Team response.
+    show_tool_calls_details: bool = False
     # Controls which (if any) tool is called by the team model.
     # "none" means the model will not call a tool and instead generates a message.
     # "auto" means the model can pick between generating a message or calling a tool.
@@ -187,6 +189,9 @@ class Team:
     # If True, parse the response
     parse_response: bool = True
 
+    # If True, enable the shared run_id for all members
+    enable_shared_run_id_for_members: bool = False
+
     # --- History ---
     # Memory for the team
     memory: Optional[Union[TeamMemory, Memory]] = None
@@ -200,6 +205,8 @@ class Team:
     enable_session_summaries: bool = False
     # If True, the agent adds a reference to the session summaries in the response
     add_session_summary_references: Optional[bool] = None
+    # If True, the agent creates/updates user memories asynchronously
+    make_user_memories_create_and_update_async: bool = False
 
     # --- Team History ---
     # If True, enable the team history
@@ -208,6 +215,8 @@ class Team:
     num_of_interactions_from_history: Optional[int] = None
     # Number of historical runs to include in the messages
     num_history_runs: int = 3
+    # Function to resign the messages from history
+    resources_resign_function: Optional[Callable] = None
 
     # --- Team Storage ---
     storage: Optional[Storage] = None
@@ -231,10 +240,15 @@ class Team:
     # This helps us improve the Teams implementation and provide better support
     telemetry: bool = True
 
+    # tmp vars
+    account_id: Optional[str] = None
+    ts: Optional[int] = None
+    image_ids: Optional[List[str]] = None
+
     def __init__(
         self,
         members: List[Union[Agent, "Team"]],
-        mode: Literal["route", "coordinate", "collaborate"] = "coordinate",
+        mode: Literal["route", "coordinate", "collaborate", "direct"] = "coordinate",
         model: Optional[Model] = None,
         name: Optional[str] = None,
         team_id: Optional[str] = None,
@@ -265,21 +279,25 @@ class Team:
         read_team_history: bool = False,
         tools: Optional[List[Union[Toolkit, Callable, Function, Dict]]] = None,
         show_tool_calls: bool = True,
+        show_tool_calls_details: bool = False,
         tool_call_limit: Optional[int] = None,
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         tool_hooks: Optional[List[Callable]] = None,
         response_model: Optional[Type[BaseModel]] = None,
         use_json_mode: bool = False,
         parse_response: bool = True,
+        enable_shared_run_id_for_members: bool = False,
         memory: Optional[Union[TeamMemory, Memory]] = None,
         enable_agentic_memory: bool = False,
         enable_user_memories: bool = False,
         add_memory_references: Optional[bool] = None,
         enable_session_summaries: bool = False,
         add_session_summary_references: Optional[bool] = None,
+        make_user_memories_create_and_update_async: bool = False,
         enable_team_history: bool = False,
         num_of_interactions_from_history: Optional[int] = None,
         num_history_runs: int = 3,
+        resources_resign_function: Optional[Callable] = None,
         storage: Optional[Storage] = None,
         extra_data: Optional[Dict[str, Any]] = None,
         reasoning: bool = False,
@@ -332,6 +350,7 @@ class Team:
 
         self.tools = tools
         self.show_tool_calls = show_tool_calls
+        self.show_tool_calls_details = show_tool_calls_details
         self.tool_choice = tool_choice
         self.tool_call_limit = tool_call_limit
         self.tool_hooks = tool_hooks
@@ -339,18 +358,18 @@ class Team:
         self.response_model = response_model
         self.use_json_mode = use_json_mode
         self.parse_response = parse_response
-
+        self.enable_shared_run_id_for_members = enable_shared_run_id_for_members
         self.memory = memory
         self.enable_agentic_memory = enable_agentic_memory
         self.enable_user_memories = enable_user_memories
         self.add_memory_references = add_memory_references
         self.enable_session_summaries = enable_session_summaries
         self.add_session_summary_references = add_session_summary_references
-
+        self.make_user_memories_create_and_update_async = make_user_memories_create_and_update_async
         self.enable_team_history = enable_team_history
         self.num_of_interactions_from_history = num_of_interactions_from_history
         self.num_history_runs = num_history_runs
-
+        self.resources_resign_function = resources_resign_function
         self.storage = storage
         self.extra_data = extra_data
 
@@ -393,6 +412,8 @@ class Team:
 
         self._formatter: Optional[SafeFormatter] = None
 
+        self.is_conversation_over: bool = False
+
     def _set_team_id(self) -> str:
         if self.team_id is None:
             self.team_id = str(uuid4())
@@ -432,6 +453,9 @@ class Team:
 
         if session_id is not None:
             member.team_session_id = session_id
+
+        if self.enable_shared_run_id_for_members and self.run_id is not None:
+            member.run_id = self.run_id
 
         # Set the team session state on members
         if self.session_state is not None:
@@ -722,6 +746,22 @@ class Team:
                 if self.get_member_information_tool:
                     _tools.append(self.get_member_information)
 
+            elif self.mode == "direct":
+                _tools.append(
+                    self.get_direct_task_function(
+                        session_id=session_id,
+                        stream=stream,
+                        async_mode=False,
+                        images=images,  # type: ignore
+                        videos=videos,  # type: ignore
+                        audio=audio,  # type: ignore
+                        files=files,  # type: ignore
+                        knowledge_filters=effective_filters,
+                    )
+                )
+                if self.get_member_information_tool:
+                    _tools.append(self.get_member_information)
+
             elif self.mode == "collaborate":
                 run_member_agents_func = self.get_run_member_agents_function(
                     session_id=session_id,
@@ -942,7 +982,7 @@ class Team:
 
         # Start the Run by yielding a RunStarted event
         if stream_intermediate_steps:
-            yield self._create_run_response(content="Run started", event=RunEvent.run_started, session_id=session_id)
+            yield self._create_run_response(content="", event=RunEvent.run_started, session_id=session_id)
 
         # 2. Get a response from the model
         yield from self._handle_model_response_stream(
@@ -1052,7 +1092,6 @@ class Team:
         self._initialize_session_state(user_id=user_id, session_id=session_id)
 
         log_debug(f"Session ID: {session_id}", center=True)
-
         self.initialize_team(session_id=session_id)
 
         effective_filters = knowledge_filters
@@ -1071,7 +1110,6 @@ class Team:
 
         # Read existing session from storage
         self.read_from_storage(session_id=session_id)
-
         # Initialize memory if not yet set
         if self.memory is None:
             self.memory = Memory()
@@ -1080,11 +1118,11 @@ class Team:
         if isinstance(self.memory, Memory):
             if self.memory.model is None and self.model is not None:
                 self.memory.set_model(self.model)
-
+            self.get_user_memories(user_id=user_id)
         # Read existing session from storage
         if self.context is not None:
             self._resolve_run_context()
-
+        
         if self.response_model is not None and self.parse_response and stream is True:
             # Disable stream if response_model is set
             stream = False
@@ -1113,7 +1151,6 @@ class Team:
                     self.run_input = message.to_dict()
                 else:
                     self.run_input = message
-
             # Prepare tools
             _tools: List[Union[Function, Callable, Toolkit, Dict]] = []
 
@@ -1124,7 +1161,6 @@ class Team:
 
             if self.read_team_history:
                 _tools.append(self.get_team_history_function(session_id=session_id))
-
             if isinstance(self.memory, Memory) and self.enable_agentic_memory:
                 _tools.append(self.get_update_user_memory_function(user_id=user_id, async_mode=True))
 
@@ -1172,6 +1208,21 @@ class Team:
                 )
                 self.model.tool_choice = "auto"  # type: ignore
 
+                if self.enable_agentic_context:
+                    _tools.append(self.get_set_shared_context_function(session_id=session_id))
+            elif self.mode == "direct":
+                # _tools.append(
+                #     self.get_direct_task_function(
+                #         session_id=session_id,
+                #         stream=stream,
+                #         async_mode=True,
+                #         images=images,  # type: ignore
+                #         videos=videos,  # type: ignore
+                #         audio=audio,  # type: ignore
+                #         files=files,  # type: ignore
+                #     )
+                # )
+                self.model.tool_choice = "auto"  # type: ignore
                 if self.enable_agentic_context:
                     _tools.append(self.get_set_shared_context_function(session_id=session_id))
             elif self.mode == "collaborate":
@@ -1223,7 +1274,6 @@ class Team:
                         files=files,
                         **kwargs,
                     )
-
                 if stream:
                     resp = self._arun_stream(
                         run_response=self.run_response,
@@ -1249,6 +1299,7 @@ class Team:
                 if attempt < num_attempts - 1:
                     await asyncio.sleep(2**attempt)
             except (KeyboardInterrupt, RunCancelledException):
+                log_error(f"Operation cancelled by user", exc_info=True)
                 return TeamRunResponse(
                     run_id=self.run_id or str(uuid4()),
                     session_id=self.session_id,
@@ -1256,6 +1307,11 @@ class Team:
                     content="Operation cancelled by user",
                     event=RunEvent.run_cancelled,
                 )
+            except Exception as e:
+                log_error(f"Unexpected error in arun attempt {attempt + 1}/{num_attempts}: {str(e)}", exc_info=True)
+                last_exception = e
+                if attempt < num_attempts - 1:
+                    await asyncio.sleep(2**attempt)
 
         # If we get here, all retries failed
         if last_exception is not None:
@@ -1526,7 +1582,22 @@ class Team:
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
 
-            self._make_memories_and_summaries(run_messages, session_id, user_id)
+            async def _amake_memories_and_summaries(run_messages: RunMessages, session_id: str, user_id: Optional[str] = None):
+                await self._amake_memories_and_summaries(
+                    run_messages, session_id, user_id
+                )
+                self.write_to_storage(session_id=session_id, user_id=user_id)
+
+            if self.make_user_memories_create_and_update_async:
+                asyncio.create_task(
+                    _amake_memories_and_summaries(
+                        run_messages, session_id, user_id
+                    )
+                )
+            else:
+                self._make_memories_and_summaries(
+                    run_messages, session_id, user_id
+                )
 
             session_messages: List[Message] = []
             for run in self.memory.runs.get(session_id, []):  # type: ignore
@@ -1806,59 +1877,93 @@ class Team:
                     session_id=session_id,
                 )
 
-        # If the model response is a tool_call_started, add the tool call to the run_response
-        elif model_response_chunk.event == ModelResponseEvent.tool_call_started.value:
-            # Add tool calls to the run_response
-            new_tool_calls_list = model_response_chunk.tool_calls
-            if new_tool_calls_list is not None:
-                # Add tool calls to the agent.run_response
-                if run_response.tools is None:
-                    run_response.tools = new_tool_calls_list
-                else:
-                    run_response.tools.extend(new_tool_calls_list)
-
-            # Format tool calls whenever new ones are added during streaming
-            run_response.formatted_tool_calls = format_tool_calls(run_response.tools)
-
-            # Only yield the event if streaming intermediate steps
-            yield self._create_run_response(
-                content=model_response_chunk.content,
-                event=RunEvent.tool_call_started,
-                from_run_response=run_response,
-                session_id=session_id,
-            )
-
-        # If the model response is a tool_call_completed, update the existing tool call in the run_response
-        elif model_response_chunk.event == ModelResponseEvent.tool_call_completed.value:
-            reasoning_step: Optional[ReasoningStep] = None
-            new_tool_calls_list = model_response_chunk.tool_calls
-            if new_tool_calls_list is not None:
-                # Update the existing tool call in the run_response
-                if run_response.tools:
-                    # Create a mapping of tool_call_id to index
-                    tool_call_index_map = {
-                        tc["tool_call_id"]: i
-                        for i, tc in enumerate(run_response.tools)
-                        if tc.get("tool_call_id") is not None
-                    }
-                    # Process tool calls
-                    for tool_call_dict in new_tool_calls_list:
-                        tool_call_id = tool_call_dict.get("tool_call_id")
-                        index = tool_call_index_map.get(tool_call_id)
-                        if index is not None:
-                            run_response.tools[index] = tool_call_dict
-                else:
-                    run_response.tools = new_tool_calls_list
-
-                # Only iterate through new tool calls
-                for tool_call in new_tool_calls_list:
-                    tool_name = tool_call.get("tool_name", "")
-                    if tool_name.lower() in ["think", "analyze"]:
-                        tool_args = tool_call.get("tool_args", {})
-
-                        reasoning_step = self.update_reasoning_content_from_tool_call(
-                            run_response, tool_name, tool_args
+            # If the model response is a tool_call_started, add the tool call to the run_response
+            elif model_response_chunk.event == ModelResponseEvent.tool_call_started.value:
+                if self.show_tool_calls_details and isinstance(model_response_chunk, RunResponse):
+                    if stream_intermediate_steps:
+                        if run_response.tools is None:
+                            run_response.tools = []
+                        run_response.tools.extend(model_response_chunk.tools)
+                        run_response.formatted_tool_calls = format_tool_calls(
+                            run_response.tools
                         )
+                        yield self._create_run_response(
+                            content=model_response_chunk.content,
+                            event=RunEvent.tool_call_started,
+                            from_run_response=run_response,
+                            session_id=session_id,
+                        )
+                else:
+                    # Add tool calls to the run_response
+                    new_tool_calls_list = model_response_chunk.tool_calls
+                    if new_tool_calls_list is not None:
+                        # Add tool calls to the agent.run_response
+                        if run_response.tools is None:
+                            run_response.tools = new_tool_calls_list
+                        else:
+                            run_response.tools.extend(new_tool_calls_list)
+
+                # Format tool calls whenever new ones are added during streaming
+                run_response.formatted_tool_calls = format_tool_calls(run_response.tools)
+
+                # Only yield the event if streaming intermediate steps
+                if stream_intermediate_steps:
+                    yield self._create_run_response(
+                        content=model_response_chunk.content,
+                        event=RunEvent.tool_call_started,
+                        from_run_response=run_response,
+                        session_id=session_id,
+                    )
+
+            # If the model response is a tool_call_completed, update the existing tool call in the run_response
+            elif model_response_chunk.event == ModelResponseEvent.tool_call_completed.value:
+                if self.show_tool_calls_details and isinstance(model_response_chunk, RunResponse):
+                    if stream_intermediate_steps:
+                        if run_response.tools is None:
+                            run_response.tools = []
+                        run_response.tools.extend(model_response_chunk.tools)
+                        run_response.formatted_tool_calls = format_tool_calls(
+                            run_response.tools
+                        )
+                        yield self._create_run_response(
+                            content=model_response_chunk.content,
+                            event=RunEvent.tool_call_completed,
+                            from_run_response=run_response,
+                            session_id=session_id,
+                        )
+                else:
+                    reasoning_step: Optional[ReasoningStep] = None
+                    new_tool_calls_list = model_response_chunk.tool_calls
+                    if new_tool_calls_list is not None:
+                        # Update the existing tool call in the run_response
+                        if run_response.tools:
+                            # Create a mapping of tool_call_id to index
+                            tool_call_index_map = {
+                                tc["tool_call_id"]: i
+                                for i, tc in enumerate(run_response.tools)
+                                if tc.get("tool_call_id") is not None
+                            }
+                            # Process tool calls
+                            for tool_call_dict in new_tool_calls_list:
+                                tool_call_id = tool_call_dict.get("tool_call_id")
+                                index = tool_call_index_map.get(tool_call_id)
+                                if index is not None:
+                                    run_response.tools[index] = tool_call_dict
+                        else:
+                            if run_response.tools is None:
+                                run_response.tools = new_tool_calls_list
+                            else:
+                                run_response.tools.extend(new_tool_calls_list)
+
+                    # Only iterate through new tool calls
+                    for tool_call in new_tool_calls_list:
+                        tool_name = tool_call.get("tool_name", "")
+                        if tool_name.lower() in ["think", "analyze"]:
+                            tool_args = tool_call.get("tool_args", {})
+
+                            reasoning_step = self.update_reasoning_content_from_tool_call(
+                                run_response, tool_name, tool_args
+                            )
 
                         metrics = tool_call.get("metrics")
                         if metrics is not None:
@@ -1884,12 +1989,30 @@ class Team:
                         session_id=session_id,
                     )
 
-            yield self._create_run_response(
-                content=model_response_chunk.content,
-                event=RunEvent.tool_call_completed,
-                from_run_response=run_response,
-                session_id=session_id,
-            )
+                    if not self.show_tool_calls_details:
+                        yield self._create_run_response(
+                            content=model_response_chunk.content,
+                            event=RunEvent.tool_call_completed,
+                            session_id=session_id,
+                        )
+                    else:
+                        if self.mode == "direct":
+                            run_response_tmp = TeamRunResponse.from_dict(run_response.to_dict())
+                            run_response_tmp.member_responses = []
+                            run_response_tmp.content = None
+                            run_response_tmp.tools = run_response.tools[:1]
+                        yield self._create_run_response(
+                            content=model_response_chunk.content,
+                            event=RunEvent.tool_call_completed,
+                            from_run_response=run_response_tmp,
+                            session_id=session_id,
+                        )
+            elif self.show_tool_calls_details and model_response_chunk.event == RunEvent.run_response.value:
+                yield self._create_run_response(
+                    content=model_response_chunk.content,
+                    event=RunEvent.run_response,
+                    session_id=session_id,
+                )
 
     def _initialize_session_state(self, user_id: Optional[str] = None, session_id: Optional[str] = None) -> None:
         self.session_state = self.session_state or {}
@@ -1915,11 +2038,33 @@ class Team:
     async def _amake_memories_and_summaries(
         self, run_messages: RunMessages, session_id: str, user_id: Optional[str] = None
     ) -> None:
+        while not self.is_conversation_over and self.make_user_memories_create_and_update_async:
+            await asyncio.sleep(0.1)
+
         self.memory = cast(Memory, self.memory)
         user_message_str = (
             run_messages.user_message.get_content_string() if run_messages.user_message is not None else None
         )
         if self.enable_user_memories and user_message_str is not None and user_message_str:
+            if run_messages.user_message is not None and run_messages.user_message.images is not None:
+                # 获取对话历史
+                conversation_history = self.storage.read(session_id=session_id, user_id=user_id)
+                # 获取最后一轮对话
+                member_responses = conversation_history.memory["runs"][-1]["member_responses"] if conversation_history is not None else []
+                last_message = member_responses[-1] if member_responses else None
+                if last_message is not None:
+                    # 获取最后一轮对话的图片
+                    last_message_images = [img.url for img in run_messages.user_message.images]
+                    last_message_images_str = "\n".join(last_message_images)
+                    # 获取最后一轮回答
+                    last_message_answer = last_message.get("content", "")
+                    user_message_str = [
+                        f"<user_input>\n{user_message_str}\n<user_input>\n",
+                        f"<assistant_answer>\n{last_message_answer}\n<assistant_answer>\n",
+                        f"<resources>\n{last_message_images_str}\n<resources>\n",
+                    ]
+                    user_message_str = "\n".join(user_message_str)
+
             await self.memory.acreate_user_memories(message=user_message_str, user_id=user_id)
 
         # Update the session summary if needed
@@ -4421,82 +4566,102 @@ class Team:
 
         # 2 Build the default system message for the Agent.
         system_message_content: str = ""
-        system_message_content += "You are the leader of a team and sub-teams of AI Agents.\n"
-        system_message_content += "Your task is to coordinate the team to complete the user's request.\n"
+        # system_message_content += "You are the leader of a team and sub-teams of AI Agents.\n"
+        # system_message_content += "Your task is to coordinate the team to complete the user's request.\n"
 
-        system_message_content += "\nHere are the members in your team:\n"
-        system_message_content += "<team_members>\n"
-        system_message_content += self.get_members_system_message_content()
-        if self.get_member_information_tool:
-            system_message_content += "If you need to get information about your team members, you can use the `get_member_information` tool at any time.\n"
-        system_message_content += "</team_members>\n"
+        # system_message_content += "\nHere are the members in your team:\n"
+        # system_message_content += "<team_members>\n"
+        # system_message_content += self.get_members_system_message_content()
+        # if self.get_member_information_tool:
+        #     system_message_content += "If you need to get information about your team members, you can use the `get_member_information` tool at any time.\n"
+        # system_message_content += "</team_members>\n"
 
-        system_message_content += "\n<how_to_respond>\n"
-        if self.mode == "coordinate":
-            system_message_content += (
-                "- You can either respond directly or transfer tasks to members in your team with the highest likelihood of completing the user's request.\n"
-                "- Carefully analyze the tools available to the members and their roles before transferring tasks.\n"
-                "- You cannot use a member tool directly. You can only transfer tasks to members.\n"
-                "- When you transfer a task to another member, make sure to include:\n"
-                "  - member_id (str): The ID of the member to forward the task to.\n"
-                "  - task_description (str): A clear description of the task.\n"
-                "  - expected_output (str): The expected output.\n"
-                "- You can transfer tasks to multiple members at once.\n"
-                "- You must always analyze the responses from members before responding to the user.\n"
-                "- After analyzing the responses from the members, if you feel the task has been completed, you can stop and respond to the user.\n"
-                "- If you are not satisfied with the responses from the members, you should re-assign the task.\n"
-            )
-        elif self.mode == "route":
-            system_message_content += (
-                "- You can either respond directly or forward tasks to members in your team with the highest likelihood of completing the user's request.\n"
-                "- Carefully analyze the tools available to the members and their roles before forwarding tasks.\n"
-                "- When you forward a task to another Agent, make sure to include:\n"
-                "  - member_id (str): The ID of the member to forward the task to.\n"
-                "  - expected_output (str): The expected output.\n"
-                "- You can forward tasks to multiple members at once.\n"
-            )
-        elif self.mode == "collaborate":
-            system_message_content += (
-                "- You can either respond directly or use the `run_member_agents` tool to run all members in your team to get a collaborative response.\n"
-                "- To run the members in your team, call `run_member_agents` ONLY once. This will run all members in your team.\n"
-                "- Analyze the responses from all members and evaluate whether the task has been completed.\n"
-                "- If you feel the task has been completed, you can stop and respond to the user.\n"
-            )
-        system_message_content += "</how_to_respond>\n\n"
+        # system_message_content += "\n<how_to_respond>\n"
+        # if self.mode == "coordinate":
+        #     system_message_content += (
+        #         "- You can either respond directly or transfer tasks to members in your team with the highest likelihood of completing the user's request.\n"
+        #         "- Carefully analyze the tools available to the members and their roles before transferring tasks.\n"
+        #         "- You cannot use a member tool directly. You can only transfer tasks to members.\n"
+        #         "- When you transfer a task to another member, make sure to include:\n"
+        #         "  - member_id (str): The ID of the member to forward the task to.\n"
+        #         "  - task_description (str): A clear description of the task.\n"
+        #         "  - expected_output (str): The expected output.\n"
+        #         "- You can transfer tasks to multiple members at once.\n"
+        #         "- You must always analyze the responses from members before responding to the user.\n"
+        #         "- After analyzing the responses from the members, if you feel the task has been completed, you can stop and respond to the user.\n"
+        #         "- If you are not satisfied with the responses from the members, you should re-assign the task.\n"
+        #     )
+        # elif self.mode == "direct":
+        #     system_message_content += (
+        #         "- You can either respond directly or transfer tasks to members in your team with the highest likelihood of completing the user's request.\n"
+        #         "- Carefully analyze the tools available to the members and their roles before transferring tasks.\n"
+        #         "- You cannot use a member tool directly. You can only transfer tasks to members.\n"
+        #         "- When you transfer a task to another member, make sure to include:\n"
+        #         "  - member_id (str): The ID of the member to forward the task to.\n"
+        #         "  - task_description (str): A clear description of the task.\n"
+        #         "  - expected_output (str): The expected output.\n"
+        #     )
+        # elif self.mode == "route":
+        #     system_message_content += (
+        #         "- You can either respond directly or forward tasks to members in your team with the highest likelihood of completing the user's request.\n"
+        #         "- Carefully analyze the tools available to the members and their roles before forwarding tasks.\n"
+        #         "- When you forward a task to another Agent, make sure to include:\n"
+        #         "  - member_id (str): The ID of the member to forward the task to.\n"
+        #         "  - expected_output (str): The expected output.\n"
+        #         "- You can forward tasks to multiple members at once.\n"
+        #     )
+        # elif self.mode == "collaborate":
+        #     system_message_content += (
+        #         "- You can either respond directly or use the `run_member_agents` tool to run all members in your team to get a collaborative response.\n"
+        #         "- To run the members in your team, call `run_member_agents` ONLY once. This will run all members in your team.\n"
+        #         "- Analyze the responses from all members and evaluate whether the task has been completed.\n"
+        #         "- If you feel the task has been completed, you can stop and respond to the user.\n"
+        #     )
+        # system_message_content += "</how_to_respond>\n\n"
 
-        if self.enable_agentic_context:
-            system_message_content += "<shared_context>\n"
-            system_message_content += (
-                "You have access to a shared context that will be shared with all members of the team.\n"
-            )
-            system_message_content += "Use this shared context to improve inter-agent communication and coordination.\n"
-            system_message_content += "It is important that you update the shared context as often as possible.\n"
-            system_message_content += "To update the shared context, use the `set_shared_context` tool.\n"
-            system_message_content += "</shared_context>\n\n"
+        # if self.enable_agentic_context:
+        #     system_message_content += "<shared_context>\n"
+        #     system_message_content += (
+        #         "You have access to a shared context that will be shared with all members of the team.\n"
+        #     )
+        #     system_message_content += "Use this shared context to improve inter-agent communication and coordination.\n"
+        #     system_message_content += "It is important that you update the shared context as often as possible.\n"
+        #     system_message_content += "To update the shared context, use the `set_shared_context` tool.\n"
+        #     system_message_content += "</shared_context>\n\n"
 
-        if self.name is not None:
-            system_message_content += f"Your name is: {self.name}\n\n"
+        # if self.name is not None:
+        #     system_message_content += f"Your name is: {self.name}\n\n"
 
-        if self.success_criteria:
-            system_message_content += "Your task is successful when the following criteria is met:\n"
-            system_message_content += "<success_criteria>\n"
-            system_message_content += f"{self.success_criteria}\n"
-            system_message_content += "</success_criteria>\n"
-            system_message_content += "Stop the team run when the success_criteria is met.\n\n"
+        # if self.success_criteria:
+        #     system_message_content += "Your task is successful when the following criteria is met:\n"
+        #     system_message_content += "<success_criteria>\n"
+        #     system_message_content += f"{self.success_criteria}\n"
+        #     system_message_content += "</success_criteria>\n"
+        #     system_message_content += "Stop the team run when the success_criteria is met.\n\n"
 
-        # Attached media
-        if audio is not None or images is not None or videos is not None or files is not None:
-            system_message_content += "<attached_media>\n"
-            system_message_content += "You have the following media attached to your message:\n"
-            if audio is not None and len(audio) > 0:
-                system_message_content += " - Audio\n"
-            if images is not None and len(images) > 0:
-                system_message_content += " - Images\n"
-            if videos is not None and len(videos) > 0:
-                system_message_content += " - Videos\n"
-            if files is not None and len(files) > 0:
-                system_message_content += " - Files\n"
-            system_message_content += "</attached_media>\n\n"
+        if self.description is not None:
+            system_message_content += f"{self.description}\n"
+
+        # 3.3.5 Then add instructions for the Agent
+        if len(instructions) > 0:
+            system_message_content += "<instructions>"
+            if len(instructions) > 1:
+                for _upi in instructions:
+                    system_message_content += f"\n- {_upi}"
+            else:
+                system_message_content += "\n" + instructions[0]
+            system_message_content += "\n</instructions>\n"
+
+        # 3.3.7 Then add instructions for the tools
+        if self._tool_instructions is not None:
+            system_message_content += "<tools_instructions>\n"
+            for _ti in self._tool_instructions:
+                system_message_content += f"{_ti}"
+            system_message_content += "</tools_instructions>\n"
+
+        system_message_from_model = self.model.get_system_message_for_model()
+        if system_message_from_model is not None:
+            system_message_content += system_message_from_model
 
         # Then add memories to the system prompt
         if self.memory:
@@ -4505,16 +4670,35 @@ class Team:
                     user_id = "default"
                 user_memories = self.memory.memories.get(user_id, {})  # type: ignore
                 if user_memories and len(user_memories) > 0:
+                    system_message_content += "<memories_from_previous_interactions>\n"
                     system_message_content += (
-                        "You have access to memories from previous interactions with the user that you can use:\n\n"
+                        "You have access to memories from previous interactions with the user that you can use:\n"
                     )
-                    system_message_content += "<memories_from_previous_interactions>"
-                    for _memory in user_memories.values():  # type: ignore
-                        system_message_content += f"\n- {_memory.memory}"
-                    system_message_content += "\n</memories_from_previous_interactions>\n\n"
+                    system_message_content += "<reminders>\n"
+                    system_message_content += "Title | Datetime | Status\n"
+                    system_message_content += "---|---|---\n"
+                    for _memory in [m for _, m in user_memories.items() if "Reminders" in m.topics if m.datetime_at is not None]:  # type: ignore
+                        system_message_content += (
+                            f"{_memory.memory}|{_memory.datetime_at.strftime('%Y-%m-%d %H:%M:%S')}|{_memory.status}\n"
+                        )
+                    system_message_content += "</reminders>\n"
+                    system_message_content += "<notes>\n"
+                    for _memory in [m for _, m in user_memories.items() if "Notes" in m.topics]:  # type: ignore
+                        system_message_content += (
+                            f"- {_memory.memory}\n"
+                        )
+                    system_message_content += "</notes>\n"
+                    system_message_content += "<personal_preferences>\n"
+                    for _memory in [m for _, m in user_memories.items() if "Reminders" not in m.topics and "Notes" not in m.topics]:  # type: ignore
+                        system_message_content += (
+                            f"- {_memory.memory}\n"
+                        )
+                    system_message_content += "</personal_preferences>\n"
+
+                    system_message_content += "\n</memories_from_previous_interactions>\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be updated in this conversation. "
-                        "You should always prefer information from this conversation over the past memories.\n\n"
+                        "You should always prefer information from this conversation over the past memories.\n"
                     )
                 else:
                     system_message_content += (
@@ -4529,7 +4713,7 @@ class Team:
                         "Memories should include details that could personalize ongoing interactions with the user.\n"
                         "Use this tool to add new memories or update existing memories that you identify in the conversation.\n"
                         "Use this tool if the user asks to update their memory, delete a memory, or clear all memories.\n"
-                        "If you use the `update_user_memory` tool, remember to pass on the response to the user.\n\n"
+                        "If you use the `update_user_memory` tool, remember to pass on the response to the user.\n"
                     )
 
             # Then add a summary of the interaction to the system prompt
@@ -4538,33 +4722,21 @@ class Team:
                     user_id = "default"
                 session_summary: SessionSummary = self.memory.summaries.get(user_id, {}).get(session_id, None)  # type: ignore
                 if session_summary is not None:
-                    system_message_content += "Here is a brief summary of your previous interactions:\n\n"
+                    system_message_content += "Here is a brief summary of your previous interactions:\n"
                     system_message_content += "<summary_of_previous_interactions>\n"
                     system_message_content += session_summary.summary
-                    system_message_content += "\n</summary_of_previous_interactions>\n\n"
+                    system_message_content += "\n</summary_of_previous_interactions>\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be outdated. "
-                        "You should ALWAYS prefer information from this conversation over the past summary.\n\n"
+                        "You should ALWAYS prefer information from this conversation over the past summary.\n"
                     )
 
-        if self.description is not None:
-            system_message_content += f"<description>\n{self.description}\n</description>\n\n"
-
-        # 3.3.5 Then add instructions for the Agent
-        if len(instructions) > 0:
-            system_message_content += "<instructions>"
-            if len(instructions) > 1:
-                for _upi in instructions:
-                    system_message_content += f"\n- {_upi}"
-            else:
-                system_message_content += "\n" + instructions[0]
-            system_message_content += "\n</instructions>\n\n"
         # 3.3.6 Add additional information
         if len(additional_information) > 0:
             system_message_content += "<additional_information>"
             for _ai in additional_information:
                 system_message_content += f"\n- {_ai}"
-            system_message_content += "\n</additional_information>\n\n"
+            system_message_content += "\n</additional_information>\n"
         # 3.3.7 Then add instructions for the tools
         if self._tool_instructions is not None:
             for _ti in self._tool_instructions:
@@ -4583,8 +4755,37 @@ class Team:
 
         if self.additional_context is not None:
             system_message_content += (
-                f"<additional_context>\n{self.additional_context.strip()}\n</additional_context>\n\n"
+                f"\n{self.additional_context.strip()}\n"
             )
+
+        # Attached media
+        # if audio is not None or images is not None or videos is not None or files is not None:
+        #     system_message_content += "<attached_media>\n"
+        #     system_message_content += "You have the following media attached to your message:\n"
+        #     if audio is not None and len(audio) > 0:
+        #         system_message_content += "<audio>\n"
+        #         system_message_content += "\n".join([f"<id>{audio.id}</id>" for audio in audio])
+        #         system_message_content += "\n</audio>\n"
+        #     if images is not None and len(images) > 0:
+        #         system_message_content += "<images>\n"
+        #         system_message_content += "\n".join([f"<id>{img.id}</id>" for img in images])
+        #         system_message_content += "\n</images>\n"
+        #     if videos is not None and len(videos) > 0:
+        #         system_message_content += "<videos>\n"
+        #         system_message_content += "\n".join([f"<id>{video.id}</id>" for video in videos])
+        #         system_message_content += "\n</videos>\n"
+        #     if files is not None and len(files) > 0:
+        #         system_message_content += "<files>\n"
+        #         system_message_content += "\n".join([f"<id>{file.id}</id>" for file in files])
+        #         system_message_content += "\n</files>\n"
+        #     system_message_content += "</attached_media>\n\n"
+
+        # if self.expected_output is not None:
+        #     system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
+
+        # Format the system message with the session state variables
+        if self.add_state_in_messages:
+            system_message_content = self._format_message_with_state_variables(system_message_content, user_id=user_id)
 
         # Add the JSON output prompt if response_model is provided and structured_outputs is False
         if (
@@ -4640,7 +4841,10 @@ class Team:
                 history = self.memory.get_messages_from_last_n_runs(last_n=self.num_history_runs, skip_role="system")
             elif isinstance(self.memory, Memory):
                 history = self.memory.get_messages_from_last_n_runs(
-                    session_id=session_id, last_n=self.num_history_runs, skip_role="system"
+                    session_id=session_id,
+                    last_n=self.num_history_runs,
+                    skip_role="system",
+                    resources_resign_function=self.resources_resign_function,
                 )
 
             if len(history) > 0:
@@ -4655,6 +4859,15 @@ class Team:
 
                 # Extend the messages with the history
                 run_messages.messages += history_copy
+            log_debug(f"opening_words: {self.context.get('opening_words') if self.context is not None else None}")
+            if self.context is not None and self.context.get("opening_words"):
+                run_messages.messages.append(
+                    Message(
+                        role="assistant",
+                        content=self.context["opening_words"],
+                        from_history=True,
+                    )
+                )
 
         # 3. Add user message to run_messages
         user_message = self._get_user_message(message, audio=audio, images=images, videos=videos, files=files, **kwargs)
@@ -4693,7 +4906,7 @@ class Team:
 
             # Add context to user message
             if self.add_context and self.context is not None:
-                user_message_content += "\n\n<context>\n"
+                user_message_content += "\n<context>\n"
                 user_message_content += self._convert_context_to_string(self.context) + "\n"
                 user_message_content += "</context>"
 
@@ -5658,6 +5871,331 @@ class Team:
 
         return transfer_func
 
+    def get_direct_task_function(
+        self,
+        session_id: str,
+        stream: bool = False,
+        async_mode: bool = False,
+        images: Optional[List[Image]] = None,
+        videos: Optional[List[Video]] = None,
+        audio: Optional[List[Audio]] = None,
+        files: Optional[List[File]] = None,
+    ) -> Function:
+        if not images:
+            images = []
+        if not videos:
+            videos = []
+        if not audio:
+            audio = []
+        if not files:
+            files = []
+
+        def direct_task_to_member(
+            member_id: str, task_description: str, expected_output: Optional[str] = None
+        ) -> Iterator[str]:
+            """Use this function to direct a task to the selected team member.
+            You must provide a clear and concise description of the task the member should achieve AND the expected output.
+
+            Args:
+                member_id (str): The ID of the member to direct the task to.
+                task_description (str): A clear and concise description of the task the member should achieve.
+                expected_output (str): The expected output from the member (optional).
+            Returns:
+                str: The result of the delegated task.
+            """
+
+            # Find the member agent using the helper function
+            result = self._find_member_by_id(member_id)
+            if result is None:
+                yield f"Member with ID {member_id} not found in the team or any subteams. Please choose the correct member from the list of members:\n\n{self.get_members_system_message_content(indent=0)}"
+                return
+
+            member_agent_index, member_agent = result
+            self._initialize_member(member_agent, session_id=session_id)
+
+            # 2. Determine team context to send
+            if isinstance(self.memory, TeamMemory):
+                self.memory = cast(TeamMemory, self.memory)
+                team_context_str = None
+                if self.enable_agentic_context:
+                    team_context_str = self.memory.get_team_context_str()
+
+                team_member_interactions_str = None
+                if self.share_member_interactions:
+                    team_member_interactions_str = self.memory.get_team_member_interactions_str()
+                    if context_images := self.memory.get_team_context_images():
+                        images.extend([Image.from_artifact(img) for img in context_images])
+                    if context_videos := self.memory.get_team_context_videos():
+                        videos.extend([Video.from_artifact(vid) for vid in context_videos])
+                    if context_audio := self.memory.get_team_context_audio():
+                        audio.extend([Audio.from_artifact(aud) for aud in context_audio])
+            else:
+                self.memory = cast(Memory, self.memory)
+                team_context_str = None
+                if self.enable_agentic_context:
+                    team_context_str = self.memory.get_team_context_str(session_id=session_id)  # type: ignore
+
+                team_member_interactions_str = None
+                if self.share_member_interactions:
+                    team_member_interactions_str = self.memory.get_team_member_interactions_str(session_id=session_id)  # type: ignore
+                    if context_images := self.memory.get_team_context_images(session_id=session_id):  # type: ignore
+                        images.extend([Image.from_artifact(img) for img in context_images])
+                    if context_videos := self.memory.get_team_context_videos(session_id=session_id):  # type: ignore
+                        videos.extend([Video.from_artifact(vid) for vid in context_videos])
+                    if context_audio := self.memory.get_team_context_audio(session_id=session_id):  # type: ignore
+                        audio.extend([Audio.from_artifact(aud) for aud in context_audio])
+
+            # 3. Create the member agent task
+            member_agent_task = "You are a member of a team of agents. Your goal is to complete the following task:"
+            member_agent_task += f"\n\n<task>\n{task_description}\n</task>"
+
+            if expected_output is not None:
+                member_agent_task += f"\n\n<expected_output>\n{expected_output}\n</expected_output>"
+
+            if team_context_str:
+                member_agent_task += f"\n\n{team_context_str}"
+            if team_member_interactions_str:
+                member_agent_task += f"\n\n{team_member_interactions_str}"
+
+            # Make sure for the member agent, we are using the agent logger
+            use_agent_logger()
+            if stream:
+                member_agent_run_response_stream = member_agent.run(
+                    member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=True
+                )
+                for member_agent_run_response_chunk in member_agent_run_response_stream:
+                    check_if_run_cancelled(member_agent_run_response_chunk)
+                    if member_agent_run_response_chunk.content is not None:
+                        yield member_agent_run_response_chunk.content
+                    elif (
+                        member_agent_run_response_chunk.tools is not None
+                        and len(member_agent_run_response_chunk.tools) > 0
+                    ):
+                        yield ",".join([tool.get("content", "") for tool in member_agent_run_response_chunk.tools])
+            else:
+                member_agent_run_response = member_agent.run(
+                    member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=False
+                )
+
+                check_if_run_cancelled(member_agent_run_response)
+
+                if member_agent_run_response.content is None and (
+                    member_agent_run_response.tools is None or len(member_agent_run_response.tools) == 0
+                ):
+                    yield "No response from the member agent."
+                elif isinstance(member_agent_run_response.content, str):
+                    if len(member_agent_run_response.content.strip()) > 0:
+                        yield member_agent_run_response.content
+
+                    # If the content is empty but we have tool calls
+                    elif member_agent_run_response.tools is not None and len(member_agent_run_response.tools) > 0:
+                        yield ",".join([tool.get("content", "") for tool in member_agent_run_response.tools])
+
+                elif issubclass(type(member_agent_run_response.content), BaseModel):
+                    try:
+                        yield member_agent_run_response.content.model_dump_json(indent=2)  # type: ignore
+                    except Exception as e:
+                        yield str(e)
+                else:
+                    try:
+                        import json
+
+                        yield json.dumps(member_agent_run_response.content, indent=2)
+                    except Exception as e:
+                        yield str(e)
+
+            # Afterward, switch back to the team logger
+            use_team_logger()
+
+            # Update the memory
+            member_name = member_agent.name if member_agent.name else f"agent_{member_agent_index}"
+
+            if isinstance(self.memory, TeamMemory):
+                self.memory = cast(TeamMemory, self.memory)
+                self.memory.add_interaction_to_team_context(
+                    member_name=member_name,
+                    task=task_description,
+                    run_response=member_agent.run_response,  # type: ignore
+                )
+            else:
+                self.memory = cast(Memory, self.memory)
+                self.memory.add_interaction_to_team_context(
+                    session_id=session_id,
+                    member_name=member_name,
+                    task=task_description,
+                    run_response=member_agent.run_response,  # type: ignore
+                )
+
+            # Add the member run to the team run response
+            self.run_response = cast(TeamRunResponse, self.run_response)
+            self.run_response.add_member_run(member_agent.run_response)  # type: ignore
+
+            # Update team session state
+            self._update_team_session_state(member_agent)
+
+            # Update the team media
+            self._update_team_media(member_agent.run_response)  # type: ignore
+
+        async def adirect_task_to_member(
+            member_id: str, task_description: str, expected_output: Optional[str] = None
+        ) -> AsyncIterator[str]:
+            """Use this function to direct a task to the selected team member.
+            You must provide a clear and concise description of the task the member should achieve AND the expected output.
+
+            Args:
+                member_id (str): The ID of the member to direct the task to.
+                task_description (str): A clear and concise description of the task the member should achieve.
+                expected_output (str): The expected output from the member (optional).
+            Returns:
+                str: The result of the delegated task.
+            """
+
+            # Find the member agent using the helper function
+            result = self._find_member_by_id(member_id)
+            if result is None:
+                yield f"Member with ID {member_id} not found in the team or any subteams. Please choose the correct member from the list of members:\n\n{self.get_members_system_message_content(indent=0)}"
+                return
+
+            member_agent_index, member_agent = result
+            self._initialize_member(member_agent, session_id=session_id)
+
+            # 2. Determine team context to send
+            if isinstance(self.memory, TeamMemory):
+                self.memory = cast(TeamMemory, self.memory)
+                team_context_str = None
+                if self.enable_agentic_context:
+                    team_context_str = self.memory.get_team_context_str()
+
+                team_member_interactions_str = None
+                if self.share_member_interactions:
+                    team_member_interactions_str = self.memory.get_team_member_interactions_str()
+                    if context_images := self.memory.get_team_context_images():
+                        images.extend([Image.from_artifact(img) for img in context_images])
+                    if context_videos := self.memory.get_team_context_videos():
+                        videos.extend([Video.from_artifact(vid) for vid in context_videos])
+                    if context_audio := self.memory.get_team_context_audio():
+                        audio.extend([Audio.from_artifact(aud) for aud in context_audio])
+            else:
+                self.memory = cast(Memory, self.memory)
+                team_context_str = None
+                if self.enable_agentic_context:
+                    team_context_str = self.memory.get_team_context_str(session_id=session_id)  # type: ignore
+
+                team_member_interactions_str = None
+                if self.share_member_interactions:
+                    team_member_interactions_str = self.memory.get_team_member_interactions_str(session_id=session_id)  # type: ignore
+                    if context_images := self.memory.get_team_context_images(session_id=session_id):  # type: ignore
+                        images.extend([Image.from_artifact(img) for img in context_images])
+                    if context_videos := self.memory.get_team_context_videos(session_id=session_id):  # type: ignore
+                        videos.extend([Video.from_artifact(vid) for vid in context_videos])
+                    if context_audio := self.memory.get_team_context_audio(session_id=session_id):  # type: ignore
+                        audio.extend([Audio.from_artifact(aud) for aud in context_audio])
+
+            # 3. Create the member agent task
+            member_agent_task = "You are a member of a team of agents. Your goal is to complete the following task:"
+            member_agent_task += f"\n\n<task>\n{task_description}\n</task>"
+
+            if expected_output is not None:
+                member_agent_task += f"\n\n<expected_output>\n{expected_output}\n</expected_output>"
+
+            if team_context_str:
+                member_agent_task += f"\n\n{team_context_str}"
+            if team_member_interactions_str:
+                member_agent_task += f"\n\n{team_member_interactions_str}"
+
+            # Make sure for the member agent, we are using the agent logger
+            use_agent_logger()
+
+            if stream:
+                member_agent_run_response_stream = await member_agent.arun(
+                    member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=True
+                )
+                async for member_agent_run_response_chunk in member_agent_run_response_stream:
+                    check_if_run_cancelled(member_agent_run_response_chunk)
+                    if member_agent_run_response_chunk.content is not None:
+                        yield member_agent_run_response_chunk.content
+                    elif (
+                        member_agent_run_response_chunk.tools is not None
+                        and len(member_agent_run_response_chunk.tools) > 0
+                    ):
+                        # yield ",".join([tool.get("content", "") for tool in member_agent_run_response_chunk.tools])
+                        yield member_agent_run_response_chunk
+            else:
+                member_agent_run_response = await member_agent.arun(
+                    member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=False
+                )
+                check_if_run_cancelled(member_agent_run_response)
+
+                if member_agent_run_response.content is None and (
+                    member_agent_run_response.tools is None or len(member_agent_run_response.tools) == 0
+                ):
+                    yield "No response from the member agent."
+                elif isinstance(member_agent_run_response.content, str):
+                    if len(member_agent_run_response.content.strip()) > 0:
+                        yield member_agent_run_response.content
+
+                    # If the content is empty but we have tool calls
+                    elif member_agent_run_response.tools is not None and len(member_agent_run_response.tools) > 0:
+                        yield ",".join([tool.get("content", "") for tool in member_agent_run_response.tools])
+                elif issubclass(type(member_agent_run_response.content), BaseModel):
+                    try:
+                        yield member_agent_run_response.content.model_dump_json(indent=2)  # type: ignore
+                    except Exception as e:
+                        yield str(e)
+                else:
+                    try:
+                        import json
+
+                        yield json.dumps(member_agent_run_response.content, indent=2)
+                    except Exception as e:
+                        yield str(e)
+
+            # Afterward, switch back to the team logger
+            use_team_logger()
+
+            # Update the memory
+            member_name = member_agent.name if member_agent.name else f"agent_{member_agent_index}"
+            if isinstance(self.memory, TeamMemory):
+                self.memory = cast(TeamMemory, self.memory)
+                self.memory.add_interaction_to_team_context(
+                    member_name=member_name,
+                    task=task_description,
+                    run_response=member_agent.run_response,  # type: ignore
+                )
+            else:
+                self.memory = cast(Memory, self.memory)
+                self.memory.add_interaction_to_team_context(
+                    session_id=session_id,
+                    member_name=member_name,
+                    task=task_description,
+                    run_response=member_agent.run_response,  # type: ignore
+                )
+
+            # Add the member run to the team run response
+            self.run_response = cast(TeamRunResponse, self.run_response)
+            self.run_response.add_member_run(member_agent.run_response)  # type: ignore
+
+            # Update team session state
+            self._update_team_session_state(member_agent)
+
+            # Update the team media
+            self._update_team_media(member_agent.run_response)  # type: ignore
+
+        if async_mode:
+            direct_function = adirect_task_to_member  # type: ignore
+        else:
+            direct_function = direct_task_to_member  # type: ignore
+
+        direct_func = Function.from_callable(direct_function, strict=True)
+
+        for member in self.members:
+            if member.respond_directly:
+                direct_func.stop_after_tool_call = True
+                direct_func.show_result = True
+                break
+
+        return direct_func
+
     def _get_member_id(self, member: Union[Agent, "Team"]) -> str:
         """
         Get the ID of a member
@@ -5779,7 +6317,10 @@ class Team:
                         stream=True,
                     )
                 for member_agent_run_response_chunk in member_agent_run_response_stream:
-                    yield member_agent_run_response_chunk.content or ""
+                    if self.show_tool_calls_details:
+                        yield member_agent_run_response_chunk or ModelResponse()
+                    else:
+                        yield member_agent_run_response_chunk.content or ""
             else:
                 if not member_agent.knowledge_filters and member_agent.knowledge:
                     member_agent_run_response = member_agent.run(
@@ -5911,7 +6452,10 @@ class Team:
                     )
                 async for member_agent_run_response_chunk in member_agent_run_response_stream:
                     check_if_run_cancelled(member_agent_run_response_chunk)
-                    yield member_agent_run_response_chunk.content or ""
+                    if self.show_tool_calls_details:
+                        yield member_agent_run_response_chunk or ModelResponse()
+                    else:
+                        yield member_agent_run_response_chunk.content or ""
             else:
                 if not member_agent.knowledge_filters and member_agent.knowledge:
                     member_agent_run_response = await member_agent.arun(
@@ -6863,6 +7407,8 @@ class Team:
         from time import time
 
         """Get an TeamMemory object, which can be saved to the database"""
+        title = self.team_session.title if self.team_session else None
+        summary = self.team_session.summary if self.team_session else None
         memory_dict = None
         if self.memory is not None:
             if isinstance(self.memory, TeamMemory):
@@ -6876,11 +7422,15 @@ class Team:
                     run_responses = self.memory.runs.get(session_id)
                     if run_responses is not None:
                         memory_dict["runs"] = [rr.to_dict() for rr in run_responses]
+                if title is None:
+                    title = self.memory.summaries.get(user_id, {}).get(session_id, SessionSummary(summary=None)).summary
 
         return TeamSession(
             session_id=session_id,
             team_id=self.team_id,
             user_id=user_id,
+            title=title,
+            summary=summary,
             team_session_id=self.team_session_id,
             memory=memory_dict,
             team_data=self._get_team_data(),
@@ -6900,19 +7450,26 @@ class Team:
             team_session: TeamSession = self.team_session or self._get_team_session(
                 session_id=session_id, user_id=user_id
             )
-
+            run=TeamRunCreate(
+                run_id=self.run_id,  # type: ignore
+                run_data=run_data,
+                team_session_id=team_session.team_session_id,
+                session_id=team_session.session_id,
+                team_data=team_session.to_dict() if self.monitoring else team_session.telemetry_data(),
+            )
+            if len(team_session.team_id) != 36:
+                show_team_id=str(uuid4())
+                run.team_data['team_id']=show_team_id
+                run.team_data['team_data']['team_id']=show_team_id
+                run.run_data['run_response']['team_id']=show_team_id
+                log_debug(f"Team ID is not a valid UUID, using {show_team_id} instead")
             create_team_run(
-                run=TeamRunCreate(
-                    run_id=self.run_id,  # type: ignore
-                    run_data=run_data,
-                    team_session_id=team_session.team_session_id,
-                    session_id=team_session.session_id,
-                    team_data=team_session.to_dict() if self.monitoring else team_session.telemetry_data(),
-                ),
+                run=run,
                 monitor=self.monitoring,
             )
         except Exception as e:
             log_debug(f"Could not create team event: {e}")
+   
 
     async def _alog_team_run(self, session_id: str, user_id: Optional[str] = None) -> None:
         if not self.telemetry and not self.monitoring:
@@ -6925,14 +7482,21 @@ class Team:
             team_session: TeamSession = self.team_session or self._get_team_session(
                 session_id=session_id, user_id=user_id
             )
-
+            run=TeamRunCreate(
+                run_id=self.run_id,  # type: ignore
+                run_data=run_data,
+                team_session_id=team_session.team_session_id,
+                session_id=team_session.session_id,
+                team_data=team_session.to_dict() if self.monitoring else team_session.telemetry_data(),
+            )
+            if len(team_session.team_id) != 36:
+                show_team_id=str(uuid4())
+                run.team_data['team_id']=show_team_id
+                run.team_data['team_data']['team_id']=show_team_id
+                run.run_data['run_response']['team_id']=show_team_id
+                log_debug(f"Team ID is not a valid UUID, using {show_team_id} instead")
             await acreate_team_run(
-                run=TeamRunCreate(
-                    run_id=self.run_id,
-                    run_data=run_data,
-                    session_id=team_session.session_id,
-                    team_data=team_session.to_dict() if self.monitoring else team_session.telemetry_data(),
-                ),
+                run=run,
                 monitor=self.monitoring,
             )
         except Exception as e:

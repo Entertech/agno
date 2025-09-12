@@ -1,6 +1,6 @@
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, TypeVar, get_type_hints
-
+from datetime import datetime
 from docstring_parser import parse
 from pydantic import BaseModel, Field, validate_call
 
@@ -436,6 +436,49 @@ class FunctionCall(BaseModel):
         # Check if the entrypoint has an fc argument
         if "fc" in signature(self.function.entrypoint).parameters:  # type: ignore
             entrypoint_args["fc"] = self
+
+        if self.function._team and self.function._team.context:
+            if self.function.parameters.get("properties", {}).get("kwargs"):
+                entrypoint_args["kwargs"] = self.function._team.context
+                for k, v in entrypoint_args["kwargs"].items():
+                    if isinstance(v, datetime):
+                        entrypoint_args["kwargs"][k] = v.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            if self.function.parameters.get("properties", {}).get("account_id"):
+                entrypoint_args["account_id"] = self.function._team.context.get("account_id")
+            if self.function.parameters.get("properties", {}).get("ts"):
+                entrypoint_args["ts"] = self.function._team.context.get("ts")
+            if self.function.parameters.get("properties", {}).get("session_id"):
+                entrypoint_args["session_id"] = self.function._team.context.get("session_id")
+            if self.function.parameters.get("properties", {}).get("image_id"):
+                entrypoint_args["image_id"] = ",".join(self.function._team.context.get("image_ids", []))
+
+        if self.function._agent and self.function._agent.context:
+            if self.function.parameters.get("properties", {}).get("kwargs"):
+                entrypoint_args["kwargs"] = self.function._agent.context
+                for k, v in entrypoint_args["kwargs"].items():
+                    if isinstance(v, datetime):
+                        entrypoint_args["kwargs"][k] = v.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            if self.function.parameters.get("properties", {}).get("account_id"):
+                entrypoint_args["account_id"] = (
+                    entrypoint_args.get("account_id") or self.function._agent.context.get("account_id")
+                )
+            if self.function.parameters.get("properties", {}).get("ts"):
+                entrypoint_args["ts"] = (
+                    entrypoint_args.get("ts") or self.function._agent.context.get("ts")
+                )
+            if self.function.parameters.get("properties", {}).get("session_id"):
+                entrypoint_args["session_id"] = (
+                    entrypoint_args.get("session_id")
+                    or self.function._agent.context.get("session_id")
+                )
+            if self.function.parameters.get("properties", {}).get("image_id"):
+                entrypoint_args["image_id"] = (
+                    entrypoint_args.get("image_id")
+                    or ",".join(self.function._agent.context.get("image_ids", []))
+                )
+
         return entrypoint_args
 
     def _build_nested_execution_chain(self, entrypoint_args: Dict[str, Any]):
@@ -498,6 +541,10 @@ class FunctionCall(BaseModel):
         self._handle_pre_hook()
 
         entrypoint_args = self._build_entrypoint_args()
+
+        for arg in self.arguments.keys():
+            if arg in entrypoint_args:
+                self.arguments[arg] = entrypoint_args[arg]
 
         # Check cache if enabled and not a generator function
         if self.function.cache_results and not isgenerator(self.function.entrypoint):
@@ -684,6 +731,10 @@ class FunctionCall(BaseModel):
             self._handle_pre_hook()
 
         entrypoint_args = self._build_entrypoint_args()
+
+        for arg in self.arguments.keys():
+            if arg in entrypoint_args:
+                self.arguments[arg] = entrypoint_args[arg]
 
         # Check cache if enabled and not a generator function
         if self.function.cache_results and not (

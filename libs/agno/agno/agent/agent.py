@@ -21,6 +21,7 @@ from typing import (
     overload,
 )
 from uuid import uuid4
+import asyncio
 
 from pydantic import BaseModel
 
@@ -96,6 +97,8 @@ class Agent:
     enable_agentic_memory: bool = False
     # If True, the agent creates/updates user memories at the end of runs
     enable_user_memories: bool = False
+    # If True, the agent creates/updates user memories asynchronously
+    make_user_memories_create_and_update_async: bool = False
     # If True, the agent adds a reference to the user memories in the response
     add_memory_references: Optional[bool] = None
     # If True, the agent creates/updates session summaries at the end of runs
@@ -143,6 +146,8 @@ class Agent:
     show_tool_calls: bool = True
     # Maximum number of tool calls allowed.
     tool_call_limit: Optional[int] = None
+    # If True, the agent deletes tool metrics from the tool calls in the run response
+    delete_tool_metrics_in_run_response: bool = False
     # Controls which (if any) tool is called by the model.
     # "none" means the model will not call a tool and instead generates a message.
     # "auto" means the model can pick between generating a message or calling a tool.
@@ -295,6 +300,7 @@ class Agent:
         memory: Optional[Union[AgentMemory, Memory]] = None,
         enable_agentic_memory: bool = False,
         enable_user_memories: bool = False,
+        make_user_memories_create_and_update_async: bool = False,
         add_memory_references: Optional[bool] = None,
         enable_session_summaries: bool = False,
         add_session_summary_references: Optional[bool] = None,
@@ -311,6 +317,7 @@ class Agent:
         extra_data: Optional[Dict[str, Any]] = None,
         tools: Optional[List[Union[Toolkit, Callable, Function, Dict]]] = None,
         show_tool_calls: bool = True,
+        delete_tool_metrics_in_run_response: bool = False,
         tool_call_limit: Optional[int] = None,
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         tool_hooks: Optional[List[Callable]] = None,
@@ -379,6 +386,7 @@ class Agent:
         self.memory = memory
         self.enable_agentic_memory = enable_agentic_memory
         self.enable_user_memories = enable_user_memories
+        self.make_user_memories_create_and_update_async = make_user_memories_create_and_update_async
         self.add_memory_references = add_memory_references
         self.enable_session_summaries = enable_session_summaries
         self.add_session_summary_references = add_session_summary_references
@@ -399,6 +407,7 @@ class Agent:
 
         self.tools = tools
         self.show_tool_calls = show_tool_calls
+        self.delete_tool_metrics_in_run_response = delete_tool_metrics_in_run_response
         self.tool_call_limit = tool_call_limit
         self.tool_choice = tool_choice
         self.tool_hooks = tool_hooks
@@ -597,7 +606,12 @@ class Agent:
         # We track this so we can add messages after this index to the RunResponse and Memory
         index_of_last_user_message = len(run_messages.messages)
 
-        # 2. Generate a response from the Model (includes running function calls)
+        # 6. Start the Run by yielding a RunStarted event
+        if self.stream_intermediate_steps:
+            yield self.create_run_response("", session_id=session_id, event=RunEvent.run_started)
+
+        # 7. Generate a response from the Model (includes running function calls)
+        model_response: ModelResponse
         self.model = cast(Model, self.model)
         model_response: ModelResponse = self.model.response(
             messages=run_messages.messages,
@@ -1474,7 +1488,23 @@ class Agent:
             # Add AgentRun to memory
             self.memory.add_run(session_id=session_id, run=run_response)
 
-            self._make_memories_and_summaries(run_messages, session_id, user_id, messages)  # type: ignore
+            if self.make_user_memories_create_and_update_async:
+                asyncio.create_task(
+                    self._amake_memories_and_summaries(
+                        run_messages, session_id, user_id, messages
+                    )
+                )
+            else:
+                self._make_memories_and_summaries(
+                    run_messages, session_id, user_id, messages
+                )
+
+            if self.session_metrics is None:
+                self.session_metrics = self.calculate_metrics(run_messages.messages)  # Calculate metrics for the run
+            else:
+                self.session_metrics += self.calculate_metrics(
+                    run_messages.messages
+                )  # Calculate metrics for the session
 
             # 4. Calculate session metrics
             if self.session_metrics is None:
@@ -1988,9 +2018,36 @@ class Agent:
         self.memory = cast(Memory, self.memory)
         session_messages: List[Message] = []
         if self.enable_user_memories and run_messages.user_message is not None:
+            user_message_str = run_messages.user_message.get_content_string()
+
+            if run_messages.user_message is not None and run_messages.user_message.images is not None:
+                # 获取对话历史
+                conversation_history = self.storage.read(session_id=session_id, user_id=user_id)
+                # 获取最后一轮对话
+                last_messages = conversation_history.memory["runs"][-1]["messages"] if conversation_history is not None else []
+                last_message_images_str = ""
+                last_message_answer = ""
+                last_message_query = ""
+                for message in last_messages:
+                    # 获取最后一轮回答
+                    if last_message_answer == "" and message.get("role", "") == "assistant":
+                        last_message_answer = message.get("content", "")
+                    # 获取最后一轮查询
+                    if last_message_query == "" and message.get("role", "") == "user":
+                        # 获取最后一轮对话的图片
+                        if last_message_images_str == "":
+                            last_message_images = [img.get("url", "") for img in message.get("images", [])]
+                            last_message_images_str = "\n".join(last_message_images)
+                        break
+                user_message_str = [
+                    f"<user_input>\n{user_message_str}\n<user_input>\n",
+                    f"<assistant_answer>\n{last_message_answer}\n<assistant_answer>\n",
+                    f"<resources>\n{last_message_images_str}\n<resources>\n",
+                ]
+                user_message_str = "\n".join(user_message_str)
             log_debug("Creating user memories.")
             await self.memory.acreate_user_memories(
-                message=run_messages.user_message.get_content_string(), user_id=user_id
+                message=user_message_str, user_id=user_id
             )
 
             # TODO: Possibly do both of these in one step
@@ -2831,19 +2888,11 @@ class Agent:
             system_message_content += "\n</additional_information>\n\n"
         # 3.3.7 Then add instructions for the tools
         if self._tool_instructions is not None:
+            system_message_content += "<tools_instructions>\n"
             for _ti in self._tool_instructions:
-                system_message_content += f"{_ti}\n"
+                system_message_content += f"{_ti}\n\n"
+            system_message_content += "</tools_instructions>\n\n"
 
-        # Format the system message with the session state variables
-        if self.add_state_in_messages:
-            system_message_content = self.format_message_with_state_variables(system_message_content)
-
-        # 3.3.7 Then add the expected output
-        if self.expected_output is not None:
-            system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
-        # 3.3.8 Then add additional context
-        if self.additional_context is not None:
-            system_message_content += f"{self.additional_context}\n"
         # 3.3.9 Then add information about the team members
         if self.has_team and self.add_transfer_instructions:
             system_message_content += (
@@ -2882,14 +2931,33 @@ class Agent:
             elif isinstance(self.memory, Memory) and self.add_memory_references:
                 if not user_id:
                     user_id = "default"
-                user_memories = self.memory.get_user_memories(user_id=user_id)  # type: ignore
+                user_memories = self.memory.memories.get(user_id, {})  # type: ignore
                 if user_memories and len(user_memories) > 0:
+                    system_message_content += "<memories_from_previous_interactions>\n"
                     system_message_content += (
                         "You have access to memories from previous interactions with the user that you can use:\n\n"
                     )
-                    system_message_content += "<memories_from_previous_interactions>"
-                    for _memory in user_memories:  # type: ignore
-                        system_message_content += f"\n- {_memory.memory}"
+                    system_message_content += "<reminders>\n"
+                    system_message_content += "Title | Datetime | Status\n"
+                    system_message_content += "---|---|---\n"
+                    for _memory in [m for _, m in user_memories.items() if "Reminders" in m.topics if m.datetime_at is not None]:  # type: ignore
+                        system_message_content += (
+                            f"{_memory.memory}|{_memory.datetime_at.strftime('%Y-%m-%d %H:%M:%S')}|{_memory.status}\n"
+                        )
+                    system_message_content += "</reminders>\n"
+                    system_message_content += "<notes>\n"
+                    for _memory in [m for _, m in user_memories.items() if "Notes" in m.topics]:  # type: ignore
+                        system_message_content += (
+                            f"- {_memory.memory}\n"
+                        )
+                    system_message_content += "</notes>\n"
+                    system_message_content += "<personal_preferences>\n"
+                    for _memory in [m for _, m in user_memories.items() if "Reminders" not in m.topics and "Notes" not in m.topics]:  # type: ignore
+                        system_message_content += (
+                            f"- {_memory.memory}\n"
+                        )
+                    system_message_content += "</personal_preferences>\n"
+
                     system_message_content += "\n</memories_from_previous_interactions>\n\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be updated in this conversation. "
@@ -2943,6 +3011,17 @@ class Agent:
         if system_message_from_model is not None:
             system_message_content += system_message_from_model
 
+        # 3.3.8 Then add additional context
+        if self.additional_context is not None:
+            system_message_content += f"{self.additional_context}\n"
+
+        # 3.3.7 Then add the expected output
+        if self.expected_output is not None:
+            system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
+
+        # Format the system message with the session state variables
+        if self.add_state_in_messages:
+            system_message_content = self.format_message_with_state_variables(system_message_content)
         # 3.3.13 Add the JSON output prompt if response_model is provided and the model does not support native structured outputs or JSON schema outputs
         # or if use_json_mode is True
         if self.response_model is not None and not (
@@ -3376,7 +3455,11 @@ class Agent:
             if self.stream and member_agent.is_streamable:
                 member_agent_run_response_stream = member_agent.run(member_agent_task, stream=True)
                 for member_agent_run_response_chunk in member_agent_run_response_stream:
-                    yield member_agent_run_response_chunk.content  # type: ignore
+                    # yield member_agent_run_response_chunk.content  # type: ignore
+                    # if self.show_tool_calls_details:
+                    yield member_agent_run_response_chunk or ModelResponse()
+                    # else:
+                    #     yield member_agent_run_response_chunk.content or ""
             else:
                 member_agent_run_response: RunResponse = member_agent.run(member_agent_task, stream=False)
                 if member_agent_run_response.content is None:
@@ -4781,15 +4864,20 @@ class Agent:
             agent_session: AgentSession = self.agent_session or self.get_agent_session(
                 session_id=session_id, user_id=user_id
             )
-
-            create_agent_run(
-                run=AgentRunCreate(
+            run=AgentRunCreate(
                     run_id=self.run_id,
                     run_data=run_data,
                     session_id=agent_session.session_id,
                     agent_data=agent_session.to_dict() if self.monitoring else agent_session.telemetry_data(),
                     team_session_id=agent_session.team_session_id,
-                ),
+                )
+            agent_session_id=str(uuid4())
+            run.session_id=agent_session_id
+            run.run_data['run_response']['session_id']=agent_session_id
+            agent_session.session_id=agent_session_id
+            log_debug(f"Monitored agent_session_id: {agent_session_id}")
+            create_agent_run(
+                run=run,
                 monitor=self.monitoring,
             )
         except Exception as e:
@@ -4808,15 +4896,20 @@ class Agent:
             agent_session: AgentSession = self.agent_session or self.get_agent_session(
                 session_id=session_id, user_id=user_id
             )
-
-            await acreate_agent_run(
-                run=AgentRunCreate(
+            run=AgentRunCreate(
                     run_id=self.run_id,
                     run_data=run_data,
                     session_id=agent_session.session_id,
                     agent_data=agent_session.to_dict() if self.monitoring else agent_session.telemetry_data(),
                     team_session_id=agent_session.team_session_id,
-                ),
+                )
+            agent_session_id=str(uuid4())
+            run.session_id=agent_session_id
+            run.run_data['run_response']['session_id']=agent_session_id
+            agent_session.session_id=agent_session_id
+            log_debug(f"Monitored agent_session_id: {agent_session_id}")
+            await acreate_agent_run(
+                run=run,
                 monitor=self.monitoring,
             )
         except Exception as e:

@@ -60,6 +60,10 @@ class PgMemoryDb(MemoryDb):
             Column("id", String, primary_key=True),
             Column("user_id", String),
             Column("memory", postgresql.JSONB, server_default=text("'{}'::jsonb")),
+            Column("resource_uri", postgresql.JSONB, server_default=text("'[]'::jsonb")),
+            Column("resource_type", postgresql.JSONB, server_default=text("'[]'::jsonb")),
+            Column("datetime_at", DateTime(timezone=True)),
+            Column("status", String),
             Column("created_at", DateTime(timezone=True), server_default=text("now()")),
             Column("updated_at", DateTime(timezone=True), onupdate=text("now()")),
             extend_existing=True,
@@ -123,6 +127,10 @@ class PgMemoryDb(MemoryDb):
                     id=memory.id,
                     user_id=memory.user_id,
                     memory=memory.memory,
+                    resource_uri=memory.resource_uri,
+                    resource_type=memory.resource_type,
+                    datetime_at=memory.datetime_at,
+                    status=memory.status,
                 )
 
                 # Define the upsert if the memory already exists
@@ -132,6 +140,10 @@ class PgMemoryDb(MemoryDb):
                     set_=dict(
                         user_id=stmt.excluded.user_id,
                         memory=stmt.excluded.memory,
+                        resource_uri=stmt.excluded.resource_uri,
+                        resource_type=stmt.excluded.resource_type,
+                        datetime_at=stmt.excluded.datetime_at,
+                        status=stmt.excluded.status,
                     ),
                 )
 

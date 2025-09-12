@@ -95,7 +95,6 @@ class GeminiTools(Toolkit):
                 image_bytes = generated_image.image.image_bytes
                 base64_encoded_image_bytes = base64.b64encode(image_bytes)
                 actual_mime_type = "image/png"
-
                 media_id = str(uuid4())
                 agent.add_image(
                     ImageArtifact(
