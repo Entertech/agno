@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import threading
 from collections import ChainMap, defaultdict, deque
 from dataclasses import asdict, dataclass
 from os import getenv
@@ -82,6 +84,8 @@ class Agent:
     session_name: Optional[str] = None
     # Session state (stored in the database to persist across runs)
     session_state: Optional[Dict[str, Any]] = None
+    search_previous_sessions_history: Optional[bool] = False
+    num_history_sessions: Optional[int] = None
 
     # --- Agent Context ---
     # Context available for tools and prompt functions
@@ -269,6 +273,13 @@ class Agent:
     team_session_id: Optional[str] = None
     # Optional team ID. Indicates this agent is part of a team.
     team_id: Optional[str] = None
+
+    # Optional app ID. Indicates this agent is part of an app.
+    app_id: Optional[str] = None
+
+    # Optional workflow ID. Indicates this agent is part of a workflow.
+    workflow_id: Optional[str] = None
+
     # Optional team session state. Set by the team leader agent.
     team_session_state: Optional[Dict[str, Any]] = None
 
@@ -292,6 +303,8 @@ class Agent:
         session_id: Optional[str] = None,
         session_name: Optional[str] = None,
         session_state: Optional[Dict[str, Any]] = None,
+        search_previous_sessions_history: Optional[bool] = False,
+        num_history_sessions: Optional[int] = None,
         context: Optional[Dict[str, Any]] = None,
         add_context: bool = False,
         resolve_context: bool = True,
@@ -369,12 +382,13 @@ class Agent:
         self.name = name
         self.agent_id = agent_id
         self.introduction = introduction
-
         self.user_id = user_id
 
         self.session_id = session_id
         self.session_name = session_name
         self.session_state = session_state
+        self.search_previous_sessions_history = search_previous_sessions_history
+        self.num_history_sessions = num_history_sessions
 
         self.context = context
         self.add_context = add_context
@@ -912,6 +926,10 @@ class Agent:
         # Create a run_id for this specific run
         run_id = str(uuid4())
 
+        # Register Agent
+        thread = threading.Thread(target=self.register_agent)
+        thread.start()
+
         for attempt in range(num_attempts):
             try:
                 # Create a new run_response for this attempt
@@ -1304,6 +1322,9 @@ class Agent:
 
         # Create a run_id for this specific run
         run_id = str(uuid4())
+
+        # Register Agent
+        asyncio.create_task(self._aregister_agent())
 
         for attempt in range(num_attempts):
             try:
@@ -3360,6 +3381,12 @@ class Agent:
             agent_tools.append(self.get_chat_history_function(session_id=session_id))
         if self.read_tool_call_history:
             agent_tools.append(self.get_tool_call_history_function(session_id=session_id))
+        if self.search_previous_sessions_history:
+            agent_tools.append(
+                self.get_previous_sessions_messages_function(
+                    num_history_sessions=self.num_history_sessions, user_id=user_id
+                )
+            )
 
         if isinstance(self.memory, AgentMemory) and self.memory.create_user_memories:
             agent_tools.append(self.update_memory)
@@ -4477,6 +4504,7 @@ class Agent:
                 history = self.memory.get_messages_from_last_n_runs(
                     session_id=session_id, last_n=self.num_history_runs, skip_role=self.system_message_role
                 )
+
             if len(history) > 0:
                 # Create a deep copy of the history messages to avoid modifying the original messages
                 history_copy = [deepcopy(msg) for msg in history]
@@ -6204,6 +6232,53 @@ class Agent:
 
         return run_data
 
+    def register_agent(self) -> None:
+        """Register this agent with Agno's platform."""
+        self.set_monitoring()
+        if not self.monitoring:
+            return
+
+        from agno.api.agent import AgentCreate, create_agent
+
+        try:
+            # Ensure we have a valid session_id
+            if not self.session_id:
+                self.session_id = str(uuid4())
+
+            create_agent(
+                agent=AgentCreate(
+                    name=self.name,
+                    agent_id=self.agent_id,
+                    workflow_id=self.workflow_id,
+                    team_id=self.team_id,
+                    app_id=self.app_id,
+                    config=self.get_agent_config_dict(),
+                )
+            )
+        except Exception as e:
+            log_warning(f"Could not create Agent: {e}")
+
+    async def _aregister_agent(self) -> None:
+        self.set_monitoring()
+        if not self.monitoring:
+            return
+
+        from agno.api.agent import AgentCreate, acreate_agent
+
+        try:
+            await acreate_agent(
+                agent=AgentCreate(
+                    name=self.name,
+                    agent_id=self.agent_id,
+                    workflow_id=self.workflow_id,
+                    team_id=self.team_id,
+                    app_id=self.app_id,
+                    config=self.get_agent_config_dict(),
+                )
+            )
+        except Exception as e:
+            log_debug(f"Could not create Agent app: {e}")
+
     def _log_agent_run(self, session_id: str, user_id: Optional[str] = None) -> None:
         self.set_monitoring()
 
@@ -7298,6 +7373,66 @@ class Agent:
 
         return effective_filters
 
+    def get_previous_sessions_messages_function(
+        self, num_history_sessions: Optional[int] = 2, user_id: Optional[str] = None
+    ) -> Callable:
+        """Factory function to create a get_previous_session_messages function.
+
+        Args:
+            user_id: The user ID to get sessions for
+            num_history_sessions: The last n sessions to be taken from db
+
+        Returns:
+            Callable: A function that retrieves messages from previous sessions
+        """
+
+        def get_previous_session_messages() -> str:
+            """Use this function to retrieve messages from previous chat sessions.
+            USE THIS TOOL ONLY WHEN THE QUESTION IS EITHER "What was my last conversation?" or "What was my last question?" and similar to it.
+
+            Returns:
+                str: JSON formatted list of message pairs from previous sessions
+            """
+            import json
+
+            if self.storage is None:
+                return "Storage not available"
+
+            selected_sessions = self.storage.get_recent_sessions(limit=num_history_sessions, user_id=user_id)
+
+            all_messages = []
+            seen_message_pairs = set()
+
+            for session in selected_sessions:
+                if isinstance(session, AgentSession) and session.memory:
+                    message_count = 0
+                    for run in session.memory.get("runs", []):
+                        messages = run.get("messages", [])
+                        for i in range(0, len(messages) - 1, 2):
+                            if i + 1 < len(messages):
+                                try:
+                                    user_msg = messages[i]
+                                    assistant_msg = messages[i + 1]
+                                    user_content = user_msg.get("content")
+                                    assistant_content = assistant_msg.get("content")
+
+                                    if user_content is None or assistant_content is None:
+                                        continue  # Skip this pair if either message has no content
+
+                                    msg_pair_id = f"{user_content}:{assistant_content}"
+                                    if msg_pair_id not in seen_message_pairs:
+                                        seen_message_pairs.add(msg_pair_id)
+                                        all_messages.append(Message.model_validate(user_msg))
+                                        all_messages.append(Message.model_validate(assistant_msg))
+                                        message_count += 1
+                                except Exception as e:
+                                    log_warning(f"Error processing message pair: {e}")
+                                    continue
+
+            return json.dumps([msg.to_dict() for msg in all_messages]) if all_messages else "No history found"
+
+        return get_previous_session_messages
+
     def cli_app(
         self,
         message: Optional[str] = None,
@@ -7338,6 +7473,80 @@ class Agent:
             self.print_response(
                 message=message, stream=stream, markdown=markdown, user_id=user_id, session_id=session_id, **kwargs
             )
+
+    def get_agent_config_dict(self) -> Dict[str, Any]:
+        tools: List[Dict[str, Any]] = []
+        if self.tools is not None:
+            if not hasattr(self, "_tools_for_model") or self._tools_for_model is None:
+                team_model = self.model
+                session_id = self.session_id
+                if team_model and session_id is not None:
+                    self.determine_tools_for_model(model=team_model, session_id=session_id)
+
+            if self._tools_for_model is not None:
+                for tool in self._tools_for_model:
+                    if isinstance(tool, dict) and tool.get("type") == "function":
+                        tools.append(tool["function"])
+        model = None
+        if self.model is not None:
+            model = {
+                "name": str(self.model.__class__.__name__),
+                "model": str(self.model.id),
+                "provider": str(self.model.provider),
+            }
+
+        payload = {
+            "instructions": self.instructions if self.instructions is not None else [],
+            "tools": tools,
+            "memory": (
+                {
+                    "name": self.memory.__class__.__name__,
+                    "model": (
+                        {
+                            "name": self.memory.model.__class__.__name__,
+                            "model": self.memory.model.id,
+                            "provider": self.memory.model.provider,
+                        }
+                        if hasattr(self.memory, "model") and self.memory.model is not None
+                        else (
+                            {
+                                "name": self.model.__class__.__name__,
+                                "model": self.model.id,
+                                "provider": self.model.provider,
+                            }
+                            if self.model is not None
+                            else None
+                        )
+                    ),
+                    "db": (
+                        {
+                            "name": self.memory.db.__class__.__name__,
+                            "table_name": self.memory.db.table_name if hasattr(self.memory.db, "table_name") else None,
+                            "db_url": self.memory.db.db_url if hasattr(self.memory.db, "db_url") else None,
+                        }
+                        if hasattr(self.memory, "db") and self.memory.db is not None
+                        else None
+                    ),
+                }
+                if self.memory is not None and hasattr(self.memory, "db") and self.memory.db is not None
+                else None
+            ),
+            "storage": {
+                "name": self.storage.__class__.__name__,
+            }
+            if self.storage is not None
+            else None,
+            "knowledge": {
+                "name": self.knowledge.__class__.__name__,
+            }
+            if self.knowledge is not None
+            else None,
+            "model": model,
+            "name": self.name,
+            "description": self.description,
+        }
+        payload = {k: v for k, v in payload.items() if v is not None}
+        return payload
 
     async def acli_app(
         self,
