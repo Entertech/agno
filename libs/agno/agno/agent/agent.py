@@ -97,8 +97,6 @@ class Agent:
     enable_agentic_memory: bool = False
     # If True, the agent creates/updates user memories at the end of runs
     enable_user_memories: bool = False
-    # If True, the agent creates/updates user memories asynchronously
-    make_user_memories_create_and_update_async: bool = False
     # If True, the agent adds a reference to the user memories in the response
     add_memory_references: Optional[bool] = None
     # If True, the agent creates/updates session summaries at the end of runs
@@ -300,7 +298,6 @@ class Agent:
         memory: Optional[Union[AgentMemory, Memory]] = None,
         enable_agentic_memory: bool = False,
         enable_user_memories: bool = False,
-        make_user_memories_create_and_update_async: bool = False,
         add_memory_references: Optional[bool] = None,
         enable_session_summaries: bool = False,
         add_session_summary_references: Optional[bool] = None,
@@ -386,7 +383,6 @@ class Agent:
         self.memory = memory
         self.enable_agentic_memory = enable_agentic_memory
         self.enable_user_memories = enable_user_memories
-        self.make_user_memories_create_and_update_async = make_user_memories_create_and_update_async
         self.add_memory_references = add_memory_references
         self.enable_session_summaries = enable_session_summaries
         self.add_session_summary_references = add_session_summary_references
@@ -3228,21 +3224,15 @@ class Agent:
         async_mode: bool = False
     ) -> None:
         """Handle memory management with optional async execution."""
-        if self.make_user_memories_create_and_update_async:
-            # Create async task for memory management
-            asyncio.create_task(
-                self._amake_memories_and_summaries(run_messages, session_id, user_id, messages)
-            )
+        # Execute synchronously
+        if async_mode:
+            # In async context, we need to await
+            import asyncio
+            loop = asyncio.get_event_loop()
+            loop.create_task(self._amake_memories_and_summaries(run_messages, session_id, user_id, messages))
         else:
-            # Execute synchronously
-            if async_mode:
-                # In async context, we need to await
-                import asyncio
-                loop = asyncio.get_event_loop()
-                loop.create_task(self._amake_memories_and_summaries(run_messages, session_id, user_id, messages))
-            else:
-                # In sync context, call sync method
-                self._make_memories_and_summaries(run_messages, session_id, user_id, messages)
+            # In sync context, call sync method
+            self._make_memories_and_summaries(run_messages, session_id, user_id, messages)
 
     async def _ahandle_memory_management(
         self, 
@@ -3252,14 +3242,8 @@ class Agent:
         messages: Optional[List[Message]] = None
     ) -> None:
         """Handle memory management in async context."""
-        if self.make_user_memories_create_and_update_async:
-            # Create async task for memory management
-            asyncio.create_task(
-                self._amake_memories_and_summaries(run_messages, session_id, user_id, messages)
-            )
-        else:
-            # Execute synchronously in async context
-            await self._amake_memories_and_summaries(run_messages, session_id, user_id, messages)
+        # Execute synchronously in async context
+        await self._amake_memories_and_summaries(run_messages, session_id, user_id, messages)
 
     async def _amake_memories_and_summaries(
         self,
