@@ -610,11 +610,6 @@ class Agent:
         # We track this so we can add messages after this index to the RunResponse and Memory
         index_of_last_user_message = len(run_messages.messages)
 
-        # 6. Start the Run by yielding a RunStarted event
-        if self.stream_intermediate_steps:
-            yield self.create_run_response("", session_id=session_id, event=RunEvent.run_started)
-
-        # 7. Generate a response from the Model (includes running function calls)
         model_response: ModelResponse
         self.model = cast(Model, self.model)
         model_response: ModelResponse = self.model.response(
