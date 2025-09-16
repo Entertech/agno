@@ -1711,7 +1711,7 @@ class Team:
 
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
-            await self._ahandle_memory_management(run_messages, session_id, user_id)
+            await self._amake_memories_and_summaries(run_messages, session_id, user_id)
 
             session_messages: List[Message] = []
             for run in self.memory.runs.get(session_id, []):  # type: ignore
