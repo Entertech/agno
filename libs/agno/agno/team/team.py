@@ -1281,17 +1281,17 @@ class Team:
                 if self.enable_agentic_context:
                     _tools.append(self.get_set_shared_context_function(session_id=session_id))
             elif self.mode == "direct":
-                # _tools.append(
-                #     self.get_direct_task_function(
-                #         session_id=session_id,
-                #         stream=stream,
-                #         async_mode=True,
-                #         images=images,  # type: ignore
-                #         videos=videos,  # type: ignore
-                #         audio=audio,  # type: ignore
-                #         files=files,  # type: ignore
-                #     )
-                # )
+                _tools.append(
+                    self.get_direct_task_function(
+                        session_id=session_id,
+                        stream=stream,
+                        async_mode=True,
+                        images=images,  # type: ignore
+                        videos=videos,  # type: ignore
+                        audio=audio,  # type: ignore
+                        files=files,  # type: ignore
+                    )
+                )
                 self.model.tool_choice = "auto"  # type: ignore
                 if self.enable_agentic_context:
                     _tools.append(self.get_set_shared_context_function(session_id=session_id))
