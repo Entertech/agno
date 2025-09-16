@@ -1462,33 +1462,18 @@ class Model(ABC):
             function_call_output: str = ""
             if isinstance(fc.result, (GeneratorType, collections.abc.Iterator)):
                 for item in fc.result:
-                    if isinstance(item, ModelResponse):
-                        yield item
-                    elif isinstance(item, RunResponse):
-                        yield item
-                    else:
-                        function_call_output += str(item)
-                        if fc.function.show_result:
-                            yield ModelResponse(content=str(item))
+                    function_call_output += str(item)
+                    if fc.function.show_result:
+                        yield ModelResponse(content=str(item))
             elif isinstance(fc.result, (AsyncGeneratorType, collections.abc.AsyncIterator)):
                 async for item in fc.result:
-                    if isinstance(item, ModelResponse):
-                        yield item
-                    elif isinstance(item, RunResponse):
-                        yield item
-                    else:
-                        function_call_output += str(item)
-                        if fc.function.show_result:
-                            yield ModelResponse(content=str(item))
-            else:
-                if isinstance(fc.result, ModelResponse):
-                    yield fc.result
-                elif isinstance(fc.result, RunResponse):
-                    yield fc.result
-                else:
-                    function_call_output = str(fc.result)
+                    function_call_output += str(item)
                     if fc.function.show_result:
-                        yield ModelResponse(content=function_call_output)
+                        yield ModelResponse(content=str(item))
+            else:
+                function_call_output = str(fc.result)
+                if fc.function.show_result:
+                    yield ModelResponse(content=function_call_output)
 
             # Create and yield function call result
             function_call_result = self.create_function_call_result(
