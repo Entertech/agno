@@ -1655,13 +1655,26 @@ class Team:
             self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages, session_id)
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
-            self._handle_memory_management(run_messages, session_id, user_id, async_mode=False)
+            self._make_memories_and_summaries(run_messages, session_id, user_id, async_mode=False)
 
             session_messages: List[Message] = []
+            last_created_at = None
+            
             for run in self.memory.runs.get(session_id, []):  # type: ignore
                 if run.messages is not None:
-                    for m in run.messages:
+                    # Filter out already processed messages based on timestamp
+                    if last_created_at is not None:
+                        filtered_messages = [m for m in run.messages if m.created_at > last_created_at]
+                    else:
+                        filtered_messages = run.messages
+                    
+                    # Add filtered messages to session_messages
+                    for m in filtered_messages:
                         session_messages.append(m)
+                    
+                    # Update the last processed timestamp
+                    if filtered_messages:
+                        last_created_at = filtered_messages[-1].created_at
 
             # 10. Calculate session metrics
             self.session_metrics = self._calculate_session_metrics(session_messages)
@@ -1714,10 +1727,23 @@ class Team:
             await self._amake_memories_and_summaries(run_messages, session_id, user_id)
 
             session_messages: List[Message] = []
+            last_created_at = None
+            
             for run in self.memory.runs.get(session_id, []):  # type: ignore
                 if run.messages is not None:
-                    for m in run.messages:
+                    # Filter out already processed messages based on timestamp
+                    if last_created_at is not None:
+                        filtered_messages = [m for m in run.messages if m.created_at > last_created_at]
+                    else:
+                        filtered_messages = run.messages
+                    
+                    # Add filtered messages to session_messages
+                    for m in filtered_messages:
                         session_messages.append(m)
+                    
+                    # Update the last processed timestamp
+                    if filtered_messages:
+                        last_created_at = filtered_messages[-1].created_at
 
             # 10. Calculate session metrics
             self.session_metrics = self._calculate_session_metrics(session_messages)
