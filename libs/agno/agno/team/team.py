@@ -4855,9 +4855,7 @@ class Team:
             for _ti in self._tool_instructions:
                 system_message_content += f"{_ti}\n"
 
-        # Format the system message with the session state variables
-        if self.add_state_in_messages:
-            system_message_content = self._format_message_with_state_variables(system_message_content, user_id=user_id)
+
 
         system_message_from_model = self.model.get_system_message_for_model(self._tools_for_model)
         if system_message_from_model is not None:
@@ -4870,7 +4868,9 @@ class Team:
             system_message_content += (
                 f"<additional_context>\n{self.additional_context.strip()}\n</additional_context>\n\n"
             )
-
+        # Format the system message with the session state variables
+        if self.add_state_in_messages:
+            system_message_content = self._format_message_with_state_variables(system_message_content, user_id=user_id)
         # Add the JSON output prompt if response_model is provided and structured_outputs is False
         if (
             self.response_model is not None
