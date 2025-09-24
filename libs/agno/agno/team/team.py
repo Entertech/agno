@@ -4866,7 +4866,7 @@ class Team:
 
         if self.additional_context is not None:
             system_message_content += (
-                f"<additional_context>\n{self.additional_context.strip()}\n</additional_context>\n\n"
+                f"\n{self.additional_context.strip()}\n"
             )
         # Format the system message with the session state variables
         if self.add_state_in_messages:
