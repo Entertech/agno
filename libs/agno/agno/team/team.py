@@ -4922,15 +4922,8 @@ class Team:
         # Initialize the RunMessages object
         run_messages = RunMessages()
 
-        # 1. Add system message to run_messages
-        system_message = self.get_system_message(
-            session_id=session_id, user_id=user_id, images=images, audio=audio, videos=videos, files=files
-        )
-        if system_message is not None:
-            run_messages.system_message = system_message
-            run_messages.messages.append(system_message)
-
-        # 2. Add history to run_messages
+        # 1. First, collect images from history messages
+        history_images = []
         if self.enable_team_history or self.add_history_to_messages:
             from copy import deepcopy
 
@@ -4953,13 +4946,15 @@ class Team:
                 for _msg in history_copy:
                     _msg.from_history = True
 
-                log_debug(f"Adding {len(history_copy)} messages from history")
+                # Collect images from history messages
+                for msg in history_copy:
+                    if hasattr(msg, 'images') and msg.images:
+                        history_images.extend(msg.images)
 
-                # Extend the messages with the history
-                run_messages.messages += history_copy
+                log_debug(f"Adding {len(history_copy)} messages from history")
             log_debug(f"opening_words: {self.context.get('opening_words') if self.context is not None else None}")
             if self.context is not None and self.context.get("opening_words"):
-                run_messages.messages.append(
+                history_copy.append(
                     Message(
                         role="assistant",
                         content=self.context["opening_words"],
@@ -4967,7 +4962,26 @@ class Team:
                     )
                 )
 
-        # 3. Add user message to run_messages
+        # 2. Add system message to run_messages (after collecting history images)
+        # Combine current images with history images
+        all_images = list(images) if images else []
+        if history_images:
+            all_images.extend(history_images)
+        
+        system_message = self.get_system_message(
+            session_id=session_id, user_id=user_id, images=all_images, audio=audio, videos=videos, files=files
+        )
+        if system_message is not None:
+            run_messages.system_message = system_message
+            run_messages.messages.append(system_message)
+
+        # 3. Add history messages to run_messages
+        if self.enable_team_history or self.add_history_to_messages:
+            if len(history) > 0:
+                # Extend the messages with the history
+                run_messages.messages += history_copy
+
+        # 4. Add user message to run_messages
         user_message = self._get_user_message(
             message,
             user_id=user_id,
