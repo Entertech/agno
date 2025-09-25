@@ -4771,7 +4771,8 @@ class Team:
             if images is not None and len(images) > 0:
                 system_message_content += " - Images\n"
                 for _image in images:
-                    system_message_content += f"    - {_image.id}\n"
+                    if _image.id is not None:
+                        system_message_content += f"    - {_image.id}\n"
             if videos is not None and len(videos) > 0:
                 system_message_content += " - Videos\n"
             if files is not None and len(files) > 0:
