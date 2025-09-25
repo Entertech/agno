@@ -294,6 +294,7 @@ class Image(BaseModel):
         import zlib
 
         response_dict = {
+            "id": self.id,
             "content": base64.b64encode(
                 zlib.compress(self.content) if isinstance(self.content, bytes) else self.content.encode("utf-8")
             ).decode("utf-8")
