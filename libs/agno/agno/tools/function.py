@@ -529,7 +529,7 @@ class FunctionCall(BaseModel):
                 entrypoint_args["ts"] = self.function._team.context.get("ts")
             if self.function.parameters.get("properties", {}).get("session_id"):
                 entrypoint_args["session_id"] = self.function._team.context.get("session_id")
-            if self.function.parameters.get("properties", {}).get("image_id"):
+            if self.function.parameters.get("properties", {}).get("image_id") and self.function._team.context.get("image_ids", [])!=[]:
                 entrypoint_args["image_id"] = ",".join(self.function._team.context.get("image_ids", []))
 
         if self.function._agent and self.function._agent.context:
@@ -552,7 +552,7 @@ class FunctionCall(BaseModel):
                     entrypoint_args.get("session_id")
                     or self.function._agent.context.get("session_id")
                 )
-            if self.function.parameters.get("properties", {}).get("image_id"):
+            if self.function.parameters.get("properties", {}).get("image_id") and self.function._agent.context.get("image_ids", [])!=[]:
                 entrypoint_args["image_id"] = (
                     entrypoint_args.get("image_id")
                     or ",".join(self.function._agent.context.get("image_ids", []))

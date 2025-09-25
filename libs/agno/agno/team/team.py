@@ -4763,7 +4763,20 @@ class Team:
         #     system_message_content += f"{self.success_criteria}\n"
         #     system_message_content += "</success_criteria>\n"
         #     system_message_content += "Stop the team run when the success_criteria is met.\n\n"
-
+        # Attached media
+        if audio is not None or images is not None or videos is not None or files is not None:
+            system_message_content += "<attached_files>\n"
+            if audio is not None and len(audio) > 0:
+                system_message_content += " - Audio\n"
+            if images is not None and len(images) > 0:
+                system_message_content += " - Images\n"
+                for _image in images:
+                    system_message_content += f"    - {_image.id}\n"
+            if videos is not None and len(videos) > 0:
+                system_message_content += " - Videos\n"
+            if files is not None and len(files) > 0:
+                system_message_content += " - Files\n"
+            system_message_content += "</attached_files>\n\n"
         # Then add memories to the system prompt
         if self.memory:
             if isinstance(self.memory, Memory) and self.add_memory_references:
