@@ -4763,6 +4763,55 @@ class Team:
         #     system_message_content += f"{self.success_criteria}\n"
         #     system_message_content += "</success_criteria>\n"
         #     system_message_content += "Stop the team run when the success_criteria is met.\n\n"
+
+        if self.description is not None:
+            system_message_content += f"<description>\n{self.description}\n</description>\n\n"
+
+        # 3.3.5 Then add instructions for the Agent
+        if len(instructions) > 0:
+            system_message_content += "<instructions>"
+            if len(instructions) > 1:
+                for _upi in instructions:
+                    system_message_content += f"\n- {_upi}"
+            else:
+                system_message_content += "\n" + instructions[0]
+            system_message_content += "\n</instructions>\n\n"
+        # 3.3.6 Add additional information
+        if len(additional_information) > 0:
+            system_message_content += "<additional_information>"
+            for _ai in additional_information:
+                system_message_content += f"\n- {_ai}"
+            system_message_content += "\n</additional_information>\n\n"
+        # 3.3.7 Then add instructions for the tools
+        if self._tool_instructions is not None:
+            for _ti in self._tool_instructions:
+                system_message_content += f"{_ti}\n"
+
+
+
+        system_message_from_model = self.model.get_system_message_for_model(self._tools_for_model)
+        if system_message_from_model is not None:
+            system_message_content += system_message_from_model
+
+        if self.expected_output is not None:
+            system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
+
+        if self.additional_context is not None:
+            system_message_content += (
+                f"\n{self.additional_context.strip()}\n"
+            )
+        # Format the system message with the session state variables
+        if self.add_state_in_messages:
+            system_message_content = self._format_message_with_state_variables(system_message_content, user_id=user_id)
+        # Add the JSON output prompt if response_model is provided and structured_outputs is False
+        if (
+            self.response_model is not None
+            and self.use_json_mode
+            and self.model
+            and self.model.supports_native_structured_outputs
+        ):
+            system_message_content += f"{self._get_json_output_prompt()}"
+
         # Attached media
         if audio is not None or images is not None or videos is not None or files is not None:
             system_message_content += "<attached_files>\n"
@@ -4845,54 +4894,6 @@ class Team:
                         "Note: this information is from previous interactions and may be outdated. "
                         "You should ALWAYS prefer information from this conversation over the past summary.\n"
                     )
-
-        if self.description is not None:
-            system_message_content += f"<description>\n{self.description}\n</description>\n\n"
-
-        # 3.3.5 Then add instructions for the Agent
-        if len(instructions) > 0:
-            system_message_content += "<instructions>"
-            if len(instructions) > 1:
-                for _upi in instructions:
-                    system_message_content += f"\n- {_upi}"
-            else:
-                system_message_content += "\n" + instructions[0]
-            system_message_content += "\n</instructions>\n\n"
-        # 3.3.6 Add additional information
-        if len(additional_information) > 0:
-            system_message_content += "<additional_information>"
-            for _ai in additional_information:
-                system_message_content += f"\n- {_ai}"
-            system_message_content += "\n</additional_information>\n\n"
-        # 3.3.7 Then add instructions for the tools
-        if self._tool_instructions is not None:
-            for _ti in self._tool_instructions:
-                system_message_content += f"{_ti}\n"
-
-
-
-        system_message_from_model = self.model.get_system_message_for_model(self._tools_for_model)
-        if system_message_from_model is not None:
-            system_message_content += system_message_from_model
-
-        if self.expected_output is not None:
-            system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
-
-        if self.additional_context is not None:
-            system_message_content += (
-                f"\n{self.additional_context.strip()}\n"
-            )
-        # Format the system message with the session state variables
-        if self.add_state_in_messages:
-            system_message_content = self._format_message_with_state_variables(system_message_content, user_id=user_id)
-        # Add the JSON output prompt if response_model is provided and structured_outputs is False
-        if (
-            self.response_model is not None
-            and self.use_json_mode
-            and self.model
-            and self.model.supports_native_structured_outputs
-        ):
-            system_message_content += f"{self._get_json_output_prompt()}"
 
         return Message(role="system", content=system_message_content.strip())
 
