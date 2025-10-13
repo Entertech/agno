@@ -1656,7 +1656,7 @@ class Team:
             self.full_team_session_metrics = self._calculate_full_team_session_metrics(self.memory.messages, session_id)
         elif isinstance(self.memory, Memory):
             self.memory.add_run(session_id, run_response)
-            self._make_memories_and_summaries(run_messages, session_id, user_id, async_mode=False)
+            self._make_memories_and_summaries(run_messages, session_id, user_id)
 
             session_messages: List[Message] = []
             last_created_at = None
