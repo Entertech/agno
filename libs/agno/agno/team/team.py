@@ -1290,6 +1290,7 @@ class Team:
                         videos=videos,  # type: ignore
                         audio=audio,  # type: ignore
                         files=files,  # type: ignore
+                        knowledge_filters=effective_filters
                     )
                 )
                 self.model.tool_choice = "auto"  # type: ignore
@@ -6099,6 +6100,7 @@ class Team:
         videos: Optional[List[Video]] = None,
         audio: Optional[List[Audio]] = None,
         files: Optional[List[File]] = None,
+        knowledge_filters: Optional[Dict[str, Any]] = None,
     ) -> Function:
         if not images:
             images = []
@@ -6180,7 +6182,7 @@ class Team:
             use_agent_logger()
             if stream:
                 member_agent_run_response_stream = member_agent.run(
-                    member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=True
+                    member_agent_task, images=images, videos=videos, audio=audio, files=files, stream=True, knowledge_filters=knowledge_filters
                 )
                 for member_agent_run_response_chunk in member_agent_run_response_stream:
                     check_if_run_cancelled(member_agent_run_response_chunk)
