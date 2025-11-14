@@ -4768,6 +4768,10 @@ class Team:
         if self.description is not None:
             system_message_content += f"<description>\n{self.description}\n</description>\n\n"
 
+        system_message_content += "<your_personality>\n{personality}\n</your_personality>\n\n"
+
+        system_message_content += "<your_response_principles>\n{response_principles}\n</your_response_principles>\n\n"
+
         # 3.3.5 Then add instructions for the Agent
         if len(instructions) > 0:
             system_message_content += "<instructions>"
