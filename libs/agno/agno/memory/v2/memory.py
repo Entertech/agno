@@ -697,7 +697,6 @@ class Memory:
         last_n: Optional[int] = None,
         skip_role: Optional[str] = None,
         skip_history_messages: bool = True,
-        resources_resign_function: Optional[Callable] = None,
     ) -> List[Message]:
         """Returns the messages from the last_n runs, excluding previously tagged history messages.
         Args:
@@ -735,11 +734,7 @@ class Memory:
                     messages_from_history.append(message)
 
         log_debug(f"Getting messages from previous runs: {len(messages_from_history)}")
-        return (
-            messages_from_history
-            if resources_resign_function is None
-            else resources_resign_function(messages_from_history)
-        )
+        return messages_from_history
 
     def get_tool_calls(self, session_id: str, num_calls: Optional[int] = None) -> List[Dict[str, Any]]:
         """Returns a list of tool calls from the messages"""
