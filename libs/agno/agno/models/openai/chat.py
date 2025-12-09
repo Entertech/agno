@@ -522,12 +522,9 @@ class OpenAIChat(Model):
                 **self.get_request_params(response_format=response_format, tools=tools, tool_choice=tool_choice),
             )
             end_time = time.time()
-            log_info(f"stream connected time: {end_time - start_time} seconds")
-            first_token_time = 0
+            if(end_time - start_time > 0.5):
+                log_warning(f"stream connected time: {end_time - start_time} seconds")
             async for chunk in async_stream:
-                if first_token_time == 0:
-                    first_token_time = time.time()
-                    log_info(f"stream first token time: {first_token_time - end_time} seconds")
                 yield chunk
         except RateLimitError as e:
             log_error(f"Rate limit error from OpenAI API: {e}")
