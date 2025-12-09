@@ -2098,31 +2098,6 @@ class Team:
                             run_response,
                         )
 
-        # If the model response is a tool_call_started, add the tool call to the run_response
-        elif model_response_chunk.event == ModelResponseEvent.tool_call_started.value:
-            if self.show_tool_calls_details and isinstance(model_response_chunk, RunResponse):
-                if stream_intermediate_steps:
-                    if run_response.tools is None:
-                        run_response.tools = []
-                    run_response.tools.extend(model_response_chunk.tools)
-                    run_response.formatted_tool_calls = format_tool_calls(
-                        run_response.tools
-                    )
-                    yield self._create_run_response(
-                        content=model_response_chunk.content,
-                        event=RunEvent.tool_call_started,
-                        from_run_response=run_response,
-                        session_id=session_id,
-                    )
-            else:
-                # Add tool calls to the run_response
-                tool_executions_list = model_response_chunk.tool_executions
-                if tool_executions_list is not None:
-                    # Add tool calls to the agent.run_response
-                    if run_response.tools is None:
-                        run_response.tools = tool_executions_list
-                    else:
-                        run_response.tools.extend(tool_executions_list)
             # If the model response is a tool_call_started, add the tool call to the run_response
             elif model_response_event.event == ModelResponseEvent.tool_call_started.value:
                 # Add tool calls to the run_response
