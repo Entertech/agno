@@ -204,8 +204,6 @@ class Team:
     tools: Optional[List[Union[Toolkit, Callable, Function, Dict]]] = None
     # Show tool calls in Team response. This sets the default for the team.
     show_tool_calls: bool = True
-    # If True, show the tool calls details in the Team response.
-    show_tool_calls_details: bool = False
     # Controls which (if any) tool is called by the team model.
     # "none" means the model will not call a tool and instead generates a message.
     # "auto" means the model can pick between generating a message or calling a tool.
@@ -341,7 +339,6 @@ class Team:
         read_team_history: bool = False,
         tools: Optional[List[Union[Toolkit, Callable, Function, Dict]]] = None,
         show_tool_calls: bool = True,
-        show_tool_calls_details: bool = False,
         tool_call_limit: Optional[int] = None,
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         tool_hooks: Optional[List[Callable]] = None,
@@ -425,7 +422,6 @@ class Team:
 
         self.tools = tools
         self.show_tool_calls = show_tool_calls
-        self.show_tool_calls_details = show_tool_calls_details
         self.tool_choice = tool_choice
         self.tool_call_limit = tool_call_limit
         self.tool_hooks = tool_hooks
