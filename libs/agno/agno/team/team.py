@@ -2123,7 +2123,7 @@ class Team:
                     executor.submit(self.memory.create_user_memories, message=user_message_str, user_id=user_id)
                 )
 
-  # Update the session summary if needed
+            # Update the session summary if needed
             if self.enable_session_summaries:
                 futures.append(
                     executor.submit(self.memory.create_session_summary, session_id=session_id, user_id=user_id)  # type: ignore
@@ -5476,7 +5476,7 @@ class Team:
                 user_message_content += "</references>"
             # Add context to user message
             if self.add_context and self.context is not None:
-                user_message_content += "\n<context>\n"
+                user_message_content += "\n\n<context>\n"
                 user_message_content += self._convert_context_to_string(self.context) + "\n"
                 user_message_content += "</context>"
 
