@@ -228,9 +228,6 @@ class Team:
     # If True, parse the response
     parse_response: bool = True
 
-    # If True, enable the shared run_id for all members
-    enable_shared_run_id_for_members: bool = False
-
     # --- History ---
     # Memory for the team
     memory: Optional[Union[TeamMemory, Memory]] = None
@@ -295,10 +292,6 @@ class Team:
     # This helps us improve the Teams implementation and provide better support
     telemetry: bool = True
 
-    # tmp vars
-    account_id: Optional[str] = None
-    ts: Optional[int] = None
-    image_ids: Optional[List[str]] = None
 
     def __init__(
         self,
@@ -347,7 +340,6 @@ class Team:
         parser_model_prompt: Optional[str] = None,
         use_json_mode: bool = False,
         parse_response: bool = True,
-        enable_shared_run_id_for_members: bool = False,
         memory: Optional[Union[TeamMemory, Memory]] = None,
         enable_agentic_memory: bool = False,
         enable_user_memories: bool = False,
@@ -431,7 +423,6 @@ class Team:
         self.parser_model_prompt = parser_model_prompt
         self.use_json_mode = use_json_mode
         self.parse_response = parse_response
-        self.enable_shared_run_id_for_members = enable_shared_run_id_for_members
         self.memory = memory
 
         self.enable_agentic_memory = enable_agentic_memory
@@ -548,9 +539,6 @@ class Team:
 
         if session_id is not None:
             member.team_session_id = session_id
-
-        if self.enable_shared_run_id_for_members and self.run_id is not None:
-            member.run_id = self.run_id
 
         # Set the team session state on members
         if self.team_session_state is not None:
