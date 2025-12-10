@@ -5251,146 +5251,83 @@ class Team:
 
         # 2 Build the default system message for the Agent.
         system_message_content: str = ""
-        # system_message_content += "You are the leader of a team and sub-teams of AI Agents.\n"
-        # system_message_content += "Your task is to coordinate the team to complete the user's request.\n"
+        system_message_content += "You are the leader of a team and sub-teams of AI Agents.\n"
+        system_message_content += "Your task is to coordinate the team to complete the user's request.\n"
 
-        # system_message_content += "\nHere are the members in your team:\n"
-        # system_message_content += "<team_members>\n"
-        # system_message_content += self.get_members_system_message_content()
-        # if self.get_member_information_tool:
-        #     system_message_content += "If you need to get information about your team members, you can use the `get_member_information` tool at any time.\n"
-        # system_message_content += "</team_members>\n"
+        system_message_content += "\nHere are the members in your team:\n"
+        system_message_content += "<team_members>\n"
+        system_message_content += self.get_members_system_message_content()
+        if self.get_member_information_tool:
+            system_message_content += "If you need to get information about your team members, you can use the `get_member_information` tool at any time.\n"
+        system_message_content += "</team_members>\n"
 
-        # system_message_content += "\n<how_to_respond>\n"
-        # if self.mode == "coordinate":
-        #     system_message_content += (
-        #         "- You can either respond directly or transfer tasks to members in your team with the highest likelihood of completing the user's request.\n"
-        #         "- Carefully analyze the tools available to the members and their roles before transferring tasks.\n"
-        #         "- You cannot use a member tool directly. You can only transfer tasks to members.\n"
-        #         "- When you transfer a task to another member, make sure to include:\n"
-        #         "  - member_id (str): The ID of the member to forward the task to.\n"
-        #         "  - task_description (str): A clear description of the task.\n"
-        #         "  - expected_output (str): The expected output.\n"
-        #         "- You can transfer tasks to multiple members at once.\n"
-        #         "- You must always analyze the responses from members before responding to the user.\n"
-        #         "- After analyzing the responses from the members, if you feel the task has been completed, you can stop and respond to the user.\n"
-        #         "- If you are not satisfied with the responses from the members, you should re-assign the task.\n"
-        #     )
-        # elif self.mode == "direct":
-        #     system_message_content += (
-        #         "- You can either respond directly or transfer tasks to members in your team with the highest likelihood of completing the user's request.\n"
-        #         "- Carefully analyze the tools available to the members and their roles before transferring tasks.\n"
-        #         "- You cannot use a member tool directly. You can only transfer tasks to members.\n"
-        #         "- When you transfer a task to another member, make sure to include:\n"
-        #         "  - member_id (str): The ID of the member to forward the task to.\n"
-        #         "  - task_description (str): A clear description of the task.\n"
-        #         "  - expected_output (str): The expected output.\n"
-        #     )
-        # elif self.mode == "route":
-        #     system_message_content += (
-        #         "- You can either respond directly or forward tasks to members in your team with the highest likelihood of completing the user's request.\n"
-        #         "- Carefully analyze the tools available to the members and their roles before forwarding tasks.\n"
-        #         "- When you forward a task to another Agent, make sure to include:\n"
-        #         "  - member_id (str): The ID of the member to forward the task to.\n"
-        #         "  - expected_output (str): The expected output.\n"
-        #         "- You can forward tasks to multiple members at once.\n"
-        #     )
-        # elif self.mode == "collaborate":
-        #     system_message_content += (
-        #         "- You can either respond directly or use the `run_member_agents` tool to run all members in your team to get a collaborative response.\n"
-        #         "- To run the members in your team, call `run_member_agents` ONLY once. This will run all members in your team.\n"
-        #         "- Analyze the responses from all members and evaluate whether the task has been completed.\n"
-        #         "- If you feel the task has been completed, you can stop and respond to the user.\n"
-        #     )
-        # system_message_content += "</how_to_respond>\n\n"
-
-        # if self.enable_agentic_context:
-        #     system_message_content += "<shared_context>\n"
-        #     system_message_content += (
-        #         "You have access to a shared context that will be shared with all members of the team.\n"
-        #     )
-        #     system_message_content += "Use this shared context to improve inter-agent communication and coordination.\n"
-        #     system_message_content += "It is important that you update the shared context as often as possible.\n"
-        #     system_message_content += "To update the shared context, use the `set_shared_context` tool.\n"
-        #     system_message_content += "</shared_context>\n\n"
-
-        # if self.name is not None:
-        #     system_message_content += f"Your name is: {self.name}\n\n"
-
-        # if self.success_criteria:
-        #     system_message_content += "Your task is successful when the following criteria is met:\n"
-        #     system_message_content += "<success_criteria>\n"
-        #     system_message_content += f"{self.success_criteria}\n"
-        #     system_message_content += "</success_criteria>\n"
-        #     system_message_content += "Stop the team run when the success_criteria is met.\n\n"
-
-        if self.description is not None:
-            system_message_content += f"<description>\n{self.description}\n</description>\n\n"
-
-        system_message_content += "<your_personality>\n{personality}\n</your_personality>\n\n"
-
-        system_message_content += "<your_response_principles>\n{response_principles}\n</your_response_principles>\n\n"
-
-        # 3.3.5 Then add instructions for the Agent
-        if len(instructions) > 0:
-            system_message_content += "<instructions>"
-            if len(instructions) > 1:
-                for _upi in instructions:
-                    system_message_content += f"\n- {_upi}"
-            else:
-                system_message_content += "\n" + instructions[0]
-            system_message_content += "\n</instructions>\n\n"
-        # 3.3.6 Add additional information
-        if len(additional_information) > 0:
-            system_message_content += "<additional_information>"
-            for _ai in additional_information:
-                system_message_content += f"\n- {_ai}"
-            system_message_content += "\n</additional_information>\n\n"
-        # 3.3.7 Then add instructions for the tools
-        if self._tool_instructions is not None:
-            for _ti in self._tool_instructions:
-                system_message_content += f"{_ti}\n"
-
-
-
-        system_message_from_model = self.model.get_system_message_for_model(self._tools_for_model)
-        if system_message_from_model is not None:
-            system_message_content += system_message_from_model
-
-        if self.expected_output is not None:
-            system_message_content += f"<expected_output>\n{self.expected_output.strip()}\n</expected_output>\n\n"
-
-        if self.additional_context is not None:
+        system_message_content += "\n<how_to_respond>\n"
+        if self.mode == "coordinate":
             system_message_content += (
-                f"\n{self.additional_context.strip()}\n"
+                "- You can either respond directly or transfer tasks to members in your team with the highest likelihood of completing the user's request.\n"
+                "- Carefully analyze the tools available to the members and their roles before transferring tasks.\n"
+                "- You cannot use a member tool directly. You can only transfer tasks to members.\n"
+                "- When you transfer a task to another member, make sure to include:\n"
+                "  - member_id (str): The ID of the member to transfer the task to. Use only the ID of the member, not the ID of the team followed by the ID of the member.\n"
+                "  - task_description (str): A clear description of the task.\n"
+                "  - expected_output (str): The expected output.\n"
+                "- You can transfer tasks to multiple members at once.\n"
+                "- You must always analyze the responses from members before responding to the user.\n"
+                "- After analyzing the responses from the members, if you feel the task has been completed, you can stop and respond to the user.\n"
+                "- If you are not satisfied with the responses from the members, you should re-assign the task.\n"
             )
-        # Format the system message with the session state variables
-        if self.add_state_in_messages:
-            system_message_content = self._format_message_with_state_variables(system_message_content, user_id=user_id)
-        # Add the JSON output prompt if response_model is provided and structured_outputs is False
-        if (
-            self.response_model is not None
-            and self.use_json_mode
-            and self.model
-            and self.model.supports_native_structured_outputs
-        ):
-            system_message_content += f"{self._get_json_output_prompt()}"
+        elif self.mode == "route":
+            system_message_content += (
+                "- You can either respond directly or forward tasks to members in your team with the highest likelihood of completing the user's request.\n"
+                "- Carefully analyze the tools available to the members and their roles before forwarding tasks.\n"
+                "- When you forward a task to another Agent, make sure to include:\n"
+                "  - member_id (str): The ID of the member to forward the task to. Use only the ID of the member, not the ID of the team followed by the ID of the member.\n"
+                "  - expected_output (str): The expected output.\n"
+                "- You can forward tasks to multiple members at once.\n"
+            )
+        elif self.mode == "collaborate":
+            system_message_content += (
+                "- You can either respond directly or use the `run_member_agents` tool to run all members in your team to get a collaborative response.\n"
+                "- To run the members in your team, call `run_member_agents` ONLY once. This will run all members in your team.\n"
+                "- Analyze the responses from all members and evaluate whether the task has been completed.\n"
+                "- If you feel the task has been completed, you can stop and respond to the user.\n"
+            )
+        system_message_content += "</how_to_respond>\n\n"
+
+        if self.enable_agentic_context:
+            system_message_content += "<shared_context>\n"
+            system_message_content += (
+                "You have access to a shared context that will be shared with all members of the team.\n"
+            )
+            system_message_content += "Use this shared context to improve inter-agent communication and coordination.\n"
+            system_message_content += "It is important that you update the shared context as often as possible.\n"
+            system_message_content += "To update the shared context, use the `set_shared_context` tool.\n"
+            system_message_content += "</shared_context>\n\n"
+
+        if self.name is not None:
+            system_message_content += f"Your name is: {self.name}\n\n"
+
+        if self.success_criteria:
+            system_message_content += "Your task is successful when the following criteria is met:\n"
+            system_message_content += "<success_criteria>\n"
+            system_message_content += f"{self.success_criteria}\n"
+            system_message_content += "</success_criteria>\n"
+            system_message_content += "Stop the team run when the success_criteria is met.\n\n"
 
         # Attached media
         if audio is not None or images is not None or videos is not None or files is not None:
-            system_message_content += "<attached_files>\n"
+            system_message_content += "<attached_media>\n"
+            system_message_content += "You have the following media attached to your message:\n"
             if audio is not None and len(audio) > 0:
                 system_message_content += " - Audio\n"
             if images is not None and len(images) > 0:
                 system_message_content += " - Images\n"
-                for _image in images:
-                    if _image.id is not None:
-                        system_message_content += f"    - {_image.id}\n"
             if videos is not None and len(videos) > 0:
                 system_message_content += " - Videos\n"
             if files is not None and len(files) > 0:
                 system_message_content += " - Files\n"
-            system_message_content += "</attached_files>\n\n"
+            system_message_content += "</attached_media>\n\n"
+
         # Then add memories to the system prompt
         if self.memory:
             if isinstance(self.memory, Memory) and self.add_memory_references:
@@ -5398,35 +5335,16 @@ class Team:
                     user_id = "default"
                 user_memories = self.memory.get_user_memories(user_id=user_id)  # type: ignore
                 if user_memories and len(user_memories) > 0:
-                    system_message_content += "<memories_from_previous_interactions>\n"
                     system_message_content += (
-                        "You have access to memories from previous interactions with the user that you can use:\n"
+                        "You have access to memories from previous interactions with the user that you can use:\n\n"
                     )
-                    system_message_content += "<reminders>\n"
-                    system_message_content += "Title | Datetime | Status\n"
-                    system_message_content += "---|---|---\n"
-                    for _memory in [m for _, m in user_memories.items() if "Reminders" in m.topics if m.datetime_at is not None]:  # type: ignore
-                        system_message_content += (
-                            f"{_memory.memory}|{_memory.datetime_at.strftime('%Y-%m-%d %H:%M:%S')}|{_memory.status}\n"
-                        )
-                    system_message_content += "</reminders>\n"
-                    system_message_content += "<notes>\n"
-                    for _memory in [m for _, m in user_memories.items() if "Notes" in m.topics]:  # type: ignore
-                        system_message_content += (
-                            f"- {_memory.memory}\n"
-                        )
-                    system_message_content += "</notes>\n"
-                    system_message_content += "<personal_preferences>\n"
-                    for _memory in [m for _, m in user_memories.items() if "Reminders" not in m.topics and "Notes" not in m.topics]:  # type: ignore
-                        system_message_content += (
-                            f"- {_memory.memory}\n"
-                        )
-                    system_message_content += "</personal_preferences>\n"
-
-                    system_message_content += "\n</memories_from_previous_interactions>\n"
+                    system_message_content += "<memories_from_previous_interactions>"
+                    for _memory in user_memories:  # type: ignore
+                        system_message_content += f"\n- {_memory.memory}"
+                    system_message_content += "\n</memories_from_previous_interactions>\n\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be updated in this conversation. "
-                        "You should always prefer information from this conversation over the past memories.\n"
+                        "You should always prefer information from this conversation over the past memories.\n\n"
                     )
                 else:
                     system_message_content += (
@@ -5441,7 +5359,7 @@ class Team:
                         "Memories should include details that could personalize ongoing interactions with the user.\n"
                         "Use this tool to add new memories or update existing memories that you identify in the conversation.\n"
                         "Use this tool if the user asks to update their memory, delete a memory, or clear all memories.\n"
-                        "If you use the `update_user_memory` tool, remember to pass on the response to the user.\n"
+                        "If you use the `update_user_memory` tool, remember to pass on the response to the user.\n\n"
                     )
 
             # Then add a summary of the interaction to the system prompt
@@ -5450,13 +5368,13 @@ class Team:
                     user_id = "default"
                 session_summary: SessionSummary = self.memory.summaries.get(user_id, {}).get(session_id, None)  # type: ignore
                 if session_summary is not None:
-                    system_message_content += "Here is a brief summary of your previous interactions:\n"
+                    system_message_content += "Here is a brief summary of your previous interactions:\n\n"
                     system_message_content += "<summary_of_previous_interactions>\n"
                     system_message_content += session_summary.summary
-                    system_message_content += "\n</summary_of_previous_interactions>\n"
+                    system_message_content += "\n</summary_of_previous_interactions>\n\n"
                     system_message_content += (
                         "Note: this information is from previous interactions and may be outdated. "
-                        "You should ALWAYS prefer information from this conversation over the past summary.\n"
+                        "You should ALWAYS prefer information from this conversation over the past summary.\n\n"
                     )
 
         if self.description is not None:
