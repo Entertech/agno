@@ -98,7 +98,7 @@ class Team:
 
     members: List[Union[Agent, "Team"]]
 
-    mode: Literal["route", "coordinate", "collaborate", "direct"] = "coordinate"
+    mode: Literal["route", "coordinate", "collaborate"] = "coordinate"
 
     # Model for this Team
     model: Optional[Model] = None
@@ -305,7 +305,7 @@ class Team:
     def __init__(
         self,
         members: List[Union[Agent, "Team"]],
-        mode: Literal["route", "coordinate", "collaborate", "direct"] = "coordinate",
+        mode: Literal["route", "coordinate", "collaborate"] = "coordinate",
         model: Optional[Model] = None,
         name: Optional[str] = None,
         team_id: Optional[str] = None,
@@ -850,123 +850,7 @@ class Team:
                 else:
                     self.run_input = message
 
-            # Prepare tools
-            _tools: List[Union[Toolkit, Callable, Function, Dict]] = []
-
-            # Add provided tools
-            if self.tools is not None:
-                for tool in self.tools:
-                    _tools.append(tool)
-
-            if self.read_team_history:
-                _tools.append(self.get_team_history_function(session_id=session_id))
-
-            if isinstance(self.memory, Memory) and self.enable_agentic_memory:
-                _tools.append(self.get_update_user_memory_function(user_id=user_id, async_mode=False))
-
-            if self.enable_agentic_context:
-                _tools.append(self.get_set_shared_context_function(session_id=session_id))
-
-            if self.knowledge is not None or self.retriever is not None:
-                # Check if retriever is an async function but used in sync mode
-                from inspect import iscoroutinefunction
-
-                if self.retriever is not None and iscoroutinefunction(self.retriever):
-                    log_warning(
-                        "Async retriever function is being used with synchronous agent.run() or agent.print_response(). "
-                        "It is recommended to use agent.arun() or agent.aprint_response() instead."
-                    )
-
-                if self.search_knowledge:
-                    # Use async or sync search based on async_mode
-                    if self.enable_agentic_knowledge_filters:
-                        _tools.append(
-                            self.search_knowledge_base_with_agentic_filters_function(
-                                knowledge_filters=effective_filters, async_mode=False
-                            )
-                        )
-                    else:
-                        _tools.append(
-                            self.search_knowledge_base_function(knowledge_filters=effective_filters, async_mode=False)
-                        )
-
-            if self.mode == "route":
-                user_message = self._get_user_message(
-                    message,
-                    audio=audio,
-                    images=images,
-                    videos=videos,
-                    files=files,
-                    knowledge_filters=effective_filters,
-                    user_id=user_id,
-                )
-                forward_task_func: Function = self.get_forward_task_function(
-                    message=user_message,
-                    session_id=session_id,
-                    stream=stream,
-                    async_mode=False,
-                    images=images,  # type: ignore
-                    videos=videos,  # type: ignore
-                    audio=audio,  # type: ignore
-                    files=files,  # type: ignore
-                    knowledge_filters=effective_filters,
-                )
-                _tools.append(forward_task_func)
-                if self.get_member_information_tool:
-                    _tools.append(self.get_member_information)
-
-            elif self.mode == "coordinate":
-                _tools.append(
-                    self.get_transfer_task_function(
-                        session_id=session_id,
-                        stream=stream,
-                        async_mode=False,
-                        images=images,  # type: ignore
-                        videos=videos,  # type: ignore
-                        audio=audio,  # type: ignore
-                        files=files,  # type: ignore
-                        knowledge_filters=effective_filters,
-                    )
-                )
-                if self.get_member_information_tool:
-                    _tools.append(self.get_member_information)
-            elif self.mode == "direct":
-                _tools.append(
-                    self.get_direct_task_function(
-                        session_id=session_id,
-                        stream=stream,
-                        async_mode=False,
-                        images=images,  # type: ignore
-                        videos=videos,  # type: ignore
-                        audio=audio,  # type: ignore
-                        files=files,  # type: ignore
-                        knowledge_filters=effective_filters,
-                    )
-                )
-                if self.get_member_information_tool:
-                    _tools.append(self.get_member_information)
-            elif self.mode == "collaborate":
-                run_member_agents_func = self.get_run_member_agents_function(
-                    session_id=session_id,
-                    stream=stream,
-                    async_mode=False,
-                    images=images,  # type: ignore
-                    videos=videos,  # type: ignore
-                    audio=audio,  # type: ignore
-                    files=files,  # type: ignore
-                )
-                _tools.append(run_member_agents_func)
-
-                if self.get_member_information_tool:
-                    _tools.append(self.get_member_information)
-
-            self.model = cast(Model, self.model)
-            self.determine_tools_for_model(model=self.model, tools=_tools)
-
-            # Configure parameters for the model
-            response_format = self._get_response_format()
-
-            # # Run the team
+            # Run the team
             try:
                 # Prepare run messages
                 if self.mode == "route":
