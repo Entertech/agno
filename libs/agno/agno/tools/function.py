@@ -501,70 +501,148 @@ class FunctionCall(BaseModel):
                 log_warning(f"Error in post-hook callback: {e}")
                 log_exception(e)
 
-    def _build_entrypoint_args(self) -> Dict[str, Any]:
-        """Builds the arguments for the entrypoint."""
-        from inspect import signature
+    def _build_entrypoint_args(self) -> tuple[Dict[str, Any], bool]:
+        """
+        Builds the arguments for the entrypoint.
+        
+        Returns:
+            Tuple of (entrypoint_args dict, accepts_kwargs bool)
+        """
+        from inspect import Parameter, signature
 
         entrypoint_args = {}
+        sig = signature(self.function.entrypoint)  # type: ignore
+        
+        # Check if the entrypoint accepts **kwargs (VAR_KEYWORD)
+        # If it does, we should not inject individual parameters like user_id, account_id, etc.
+        # because they will be passed through **kwargs
+        accepts_kwargs = any(
+            param.kind == Parameter.VAR_KEYWORD 
+            for param in sig.parameters.values()
+        )
+        
         # Check if the entrypoint has an agent argument
-        if "agent" in signature(self.function.entrypoint).parameters:  # type: ignore
+        if "agent" in sig.parameters:
             entrypoint_args["agent"] = self.function._agent
         # Check if the entrypoint has an team argument
-        if "team" in signature(self.function.entrypoint).parameters:  # type: ignore
+        if "team" in sig.parameters:
             entrypoint_args["team"] = self.function._team
         # Check if the entrypoint has an fc argument
-        if "fc" in signature(self.function.entrypoint).parameters:  # type: ignore
+        if "fc" in sig.parameters:
             entrypoint_args["fc"] = self
 
+        # Handle kwargs parameter (always processed, regardless of accepts_kwargs)
+        # Process team context first, then agent context (agent context takes precedence)
+        contexts_to_process = []
         if self.function._team and self.function._team.context:
-            if self.function.parameters.get("properties", {}).get("kwargs"):
-                entrypoint_args["kwargs"] = self.function._team.context
-                for k, v in entrypoint_args["kwargs"].items():
-                    if isinstance(v, datetime):
-                        entrypoint_args["kwargs"][k] = v.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-            if self.function.parameters.get("properties", {}).get("account_id"):
-                entrypoint_args["account_id"] = self.function._team.context.get("account_id")
-            if self.function.parameters.get("properties", {}).get("user_id"):
-                entrypoint_args["user_id"] = self.function._team.context.get("user_id")
-            if self.function.parameters.get("properties", {}).get("ts"):
-                entrypoint_args["ts"] = self.function._team.context.get("ts")
-            if self.function.parameters.get("properties", {}).get("session_id"):
-                entrypoint_args["session_id"] = self.function._team.context.get("session_id")
-            if self.function.parameters.get("properties", {}).get("image_id") and self.function._team.context.get("image_ids", [])!=[]:
-                entrypoint_args["image_id"] = ",".join(self.function._team.context.get("image_ids", []))
-
+            contexts_to_process.append(self.function._team.context)
         if self.function._agent and self.function._agent.context:
-            if self.function.parameters.get("properties", {}).get("kwargs"):
-                entrypoint_args["kwargs"] = self.function._agent.context
-                for k, v in entrypoint_args["kwargs"].items():
-                    if isinstance(v, datetime):
-                        entrypoint_args["kwargs"][k] = v.strftime("%Y-%m-%dT%H:%M:%SZ")
+            contexts_to_process.append(self.function._agent.context)
+        
+        if contexts_to_process and self.function.parameters.get("properties", {}).get("kwargs"):
+            # Use the last context (agent context if available, otherwise team context)
+            context = contexts_to_process[-1]
+            entrypoint_args["kwargs"] = context.copy()
+            for k, v in entrypoint_args["kwargs"].items():
+                if isinstance(v, datetime):
+                    entrypoint_args["kwargs"][k] = v.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            if self.function.parameters.get("properties", {}).get("account_id"):
-                entrypoint_args["account_id"] = (
-                    entrypoint_args.get("account_id") or self.function._agent.context.get("account_id")
+        # Only inject individual parameters if entrypoint does NOT accept **kwargs
+        # For MCP tools, entrypoint accepts **kwargs, so these parameters should not be injected
+        if not accepts_kwargs:
+            if self.function._team and self.function._team.context:
+                self._inject_context_params_to_entrypoint_args(
+                    entrypoint_args, self.function._team.context, use_fallback=False, skip_kwargs=True
                 )
-            if self.function.parameters.get("properties", {}).get("user_id"):
-                entrypoint_args["user_id"] = (
-                    entrypoint_args.get("user_id") or self.function._agent.context.get("user_id")
-                )
-            if self.function.parameters.get("properties", {}).get("ts"):
-                entrypoint_args["ts"] = (
-                    entrypoint_args.get("ts") or self.function._agent.context.get("ts")
-                )
-            if self.function.parameters.get("properties", {}).get("session_id"):
-                entrypoint_args["session_id"] = (
-                    entrypoint_args.get("session_id")
-                    or self.function._agent.context.get("session_id")
-                )
-            if self.function.parameters.get("properties", {}).get("image_id") and self.function._agent.context.get("image_ids", [])!=[]:
-                entrypoint_args["image_id"] = (
-                    entrypoint_args.get("image_id")
-                    or ",".join(self.function._agent.context.get("image_ids", []))
+            
+            if self.function._agent and self.function._agent.context:
+                self._inject_context_params_to_entrypoint_args(
+                    entrypoint_args, self.function._agent.context, use_fallback=True, skip_kwargs=True
                 )
 
-        return entrypoint_args
+        return entrypoint_args, accepts_kwargs
+
+    def _inject_context_params_to_entrypoint_args(
+        self, entrypoint_args: Dict[str, Any], context: Dict[str, Any], use_fallback: bool = False, skip_kwargs: bool = False
+    ) -> None:
+        """
+        Inject context parameters into entrypoint_args for non-MCP tools.
+        
+        Args:
+            entrypoint_args: The entrypoint arguments dict to inject into
+            context: The context dict to inject from
+            use_fallback: If True, use existing value in entrypoint_args as fallback
+            skip_kwargs: If True, skip kwargs parameter injection (already handled separately)
+        """
+        # Handle kwargs parameter (only if not skipped)
+        if not skip_kwargs and self.function.parameters.get("properties", {}).get("kwargs"):
+            entrypoint_args["kwargs"] = context.copy()
+            for k, v in entrypoint_args["kwargs"].items():
+                if isinstance(v, datetime):
+                    entrypoint_args["kwargs"][k] = v.strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        # Context parameters to inject
+        context_params = ["account_id", "user_id", "ts", "session_id"]
+        
+        for param_name in context_params:
+            if self.function.parameters.get("properties", {}).get(param_name):
+                context_value = context.get(param_name)
+                if use_fallback:
+                    entrypoint_args[param_name] = entrypoint_args.get(param_name) or context_value
+                else:
+                    if context_value is not None:
+                        entrypoint_args[param_name] = context_value
+        
+        # Handle image_id separately (requires special processing)
+        if self.function.parameters.get("properties", {}).get("image_id"):
+            image_ids = context.get("image_ids", [])
+            if image_ids:
+                image_id_value = ",".join(image_ids)
+                if use_fallback:
+                    entrypoint_args["image_id"] = entrypoint_args.get("image_id") or image_id_value
+                else:
+                    entrypoint_args["image_id"] = image_id_value
+
+    def _inject_context_params_to_arguments(self) -> None:
+        """
+        Inject context parameters (user_id, account_id, ts, session_id, image_id) 
+        into self.arguments for MCP tools (entrypoints that accept **kwargs).
+        
+        Priority: context value > existing value in self.arguments
+        """
+        if self.arguments is None:
+            self.arguments = {}
+        
+        # Context parameters to inject
+        context_params = ["account_id", "user_id", "ts", "session_id"]
+        
+        # Inject from team context
+        if self.function._team and self.function._team.context:
+            for param_name in context_params:
+                if self.function.parameters.get("properties", {}).get(param_name):
+                    context_value = self.function._team.context.get(param_name)
+                    if context_value is not None:
+                        self.arguments[param_name] = context_value
+            
+            # Handle image_id separately (requires special processing)
+            if self.function.parameters.get("properties", {}).get("image_id"):
+                image_ids = self.function._team.context.get("image_ids", [])
+                if image_ids:
+                    self.arguments["image_id"] = ",".join(image_ids)
+        
+        # Inject from agent context (with fallback to team context values)
+        if self.function._agent and self.function._agent.context:
+            for param_name in context_params:
+                if self.function.parameters.get("properties", {}).get(param_name):
+                    context_value = self.function._agent.context.get(param_name)
+                    if context_value is not None:
+                        self.arguments[param_name] = context_value
+            
+            # Handle image_id separately (requires special processing)
+            if self.function.parameters.get("properties", {}).get("image_id"):
+                image_ids = self.function._agent.context.get("image_ids", [])
+                if image_ids:
+                    self.arguments["image_id"] = ",".join(image_ids)
 
     def _build_nested_execution_chain(self, entrypoint_args: Dict[str, Any]):
         """Build a nested chain of hook executions with the entrypoint at the center.
@@ -624,7 +702,12 @@ class FunctionCall(BaseModel):
         # Execute pre-hook if it exists
         self._handle_pre_hook()
 
-        entrypoint_args = self._build_entrypoint_args()
+        entrypoint_args, accepts_kwargs = self._build_entrypoint_args()
+
+        # For entrypoints that accept **kwargs (like MCP tools), inject context parameters
+        # into self.arguments instead of entrypoint_args to avoid conflicts
+        if accepts_kwargs:
+            self._inject_context_params_to_arguments()
 
         for arg in self.arguments.keys():
             if arg in entrypoint_args:
@@ -809,7 +892,12 @@ class FunctionCall(BaseModel):
         else:
             self._handle_pre_hook()
 
-        entrypoint_args = self._build_entrypoint_args()
+        entrypoint_args, accepts_kwargs = self._build_entrypoint_args()
+
+        # For entrypoints that accept **kwargs (like MCP tools), inject context parameters
+        # into self.arguments instead of entrypoint_args to avoid conflicts
+        if accepts_kwargs:
+            self._inject_context_params_to_arguments()
 
         for arg in self.arguments.keys():
             if arg in entrypoint_args:
