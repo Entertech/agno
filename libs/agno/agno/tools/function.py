@@ -609,40 +609,55 @@ class FunctionCall(BaseModel):
         into self.arguments for MCP tools (entrypoints that accept **kwargs).
         
         Priority: context value > existing value in self.arguments
+        
+        Supports parameter mapping: if Function has _param_mapping attribute,
+        tool parameter names are mapped to context field names.
+        Example: {"account_id": "user_id"} means tool param "account_id" maps to context["user_id"]
         """
         if self.arguments is None:
             self.arguments = {}
         
+        # Get parameter mapping from Function (set by titan layer)
+        param_mapping = getattr(self.function, "_param_mapping", {})
+        
         # Context parameters to inject
         context_params = ["account_id", "user_id", "ts", "session_id"]
+        
+        def get_context_value(param_name: str, context: Dict[str, Any]) -> Any:
+            """Get context value for a parameter, applying mapping if available."""
+            # Check if there's a mapping for this parameter
+            context_key = param_mapping.get(param_name, param_name)
+            return context.get(context_key)
         
         # Inject from team context
         if self.function._team and self.function._team.context:
             for param_name in context_params:
                 if self.function.parameters.get("properties", {}).get(param_name):
-                    context_value = self.function._team.context.get(param_name)
+                    context_value = get_context_value(param_name, self.function._team.context)
                     if context_value is not None:
                         self.arguments[param_name] = context_value
             
             # Handle image_id separately (requires special processing)
             if self.function.parameters.get("properties", {}).get("image_id"):
-                image_ids = self.function._team.context.get("image_ids", [])
+                image_ids_key = param_mapping.get("image_id", "image_ids")
+                image_ids = self.function._team.context.get(image_ids_key, [])
                 if image_ids:
-                    self.arguments["image_id"] = ",".join(image_ids)
+                    self.arguments["image_id"] = ",".join(image_ids) if isinstance(image_ids, list) else image_ids
         
         # Inject from agent context (with fallback to team context values)
         if self.function._agent and self.function._agent.context:
             for param_name in context_params:
                 if self.function.parameters.get("properties", {}).get(param_name):
-                    context_value = self.function._agent.context.get(param_name)
+                    context_value = get_context_value(param_name, self.function._agent.context)
                     if context_value is not None:
                         self.arguments[param_name] = context_value
             
             # Handle image_id separately (requires special processing)
             if self.function.parameters.get("properties", {}).get("image_id"):
-                image_ids = self.function._agent.context.get("image_ids", [])
+                image_ids_key = param_mapping.get("image_id", "image_ids")
+                image_ids = self.function._agent.context.get(image_ids_key, [])
                 if image_ids:
-                    self.arguments["image_id"] = ",".join(image_ids)
+                    self.arguments["image_id"] = ",".join(image_ids) if isinstance(image_ids, list) else image_ids
 
     def _build_nested_execution_chain(self, entrypoint_args: Dict[str, Any]):
         """Build a nested chain of hook executions with the entrypoint at the center.
