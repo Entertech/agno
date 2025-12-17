@@ -525,6 +525,8 @@ class FunctionCall(BaseModel):
 
             if self.function.parameters.get("properties", {}).get("account_id"):
                 entrypoint_args["account_id"] = self.function._team.context.get("account_id")
+            if self.function.parameters.get("properties", {}).get("user_id"):
+                entrypoint_args["user_id"] = self.function._team.context.get("user_id")
             if self.function.parameters.get("properties", {}).get("ts"):
                 entrypoint_args["ts"] = self.function._team.context.get("ts")
             if self.function.parameters.get("properties", {}).get("session_id"):
@@ -542,6 +544,10 @@ class FunctionCall(BaseModel):
             if self.function.parameters.get("properties", {}).get("account_id"):
                 entrypoint_args["account_id"] = (
                     entrypoint_args.get("account_id") or self.function._agent.context.get("account_id")
+                )
+            if self.function.parameters.get("properties", {}).get("user_id"):
+                entrypoint_args["user_id"] = (
+                    entrypoint_args.get("user_id") or self.function._agent.context.get("user_id")
                 )
             if self.function.parameters.get("properties", {}).get("ts"):
                 entrypoint_args["ts"] = (
