@@ -5340,7 +5340,7 @@ class Team:
                     # Only filter by team_id if this is part of a team
                     team_id=self.team_id if self.team_session_id is not None else None,
                 )
-
+            history_copy = []
             if len(history) > 0:
                 # Create a deep copy of the history messages to avoid modifying the original messages
                 history_copy = [deepcopy(msg) for msg in history]
