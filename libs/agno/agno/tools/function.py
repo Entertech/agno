@@ -629,16 +629,25 @@ class FunctionCall(BaseModel):
             context_key = param_mapping.get(param_name, param_name)
             return context.get(context_key)
         
+        # Helper to check if we should inject this parameter
+        def should_inject(param_name: str) -> bool:
+            # 1. If it's explicitly mapped in param_mapping, ALWAYS try to inject it
+            #    (even if it's hidden from the schema for the LLM)
+            if param_name in param_mapping:
+                return True
+            # 2. Otherwise, check if it exists in the schema
+            return bool(self.function.parameters.get("properties", {}).get(param_name))
+
         # Inject from team context
         if self.function._team and self.function._team.context:
             for param_name in context_params:
-                if self.function.parameters.get("properties", {}).get(param_name):
+                if should_inject(param_name):
                     context_value = get_context_value(param_name, self.function._team.context)
                     if context_value is not None:
                         self.arguments[param_name] = context_value
             
             # Handle image_id separately (requires special processing)
-            if self.function.parameters.get("properties", {}).get("image_id"):
+            if should_inject("image_id"):
                 image_ids_key = param_mapping.get("image_id", "image_ids")
                 image_ids = self.function._team.context.get(image_ids_key, [])
                 if image_ids:
@@ -647,13 +656,13 @@ class FunctionCall(BaseModel):
         # Inject from agent context (with fallback to team context values)
         if self.function._agent and self.function._agent.context:
             for param_name in context_params:
-                if self.function.parameters.get("properties", {}).get(param_name):
+                if should_inject(param_name):
                     context_value = get_context_value(param_name, self.function._agent.context)
                     if context_value is not None:
                         self.arguments[param_name] = context_value
             
             # Handle image_id separately (requires special processing)
-            if self.function.parameters.get("properties", {}).get("image_id"):
+            if should_inject("image_id"):
                 image_ids_key = param_mapping.get("image_id", "image_ids")
                 image_ids = self.function._agent.context.get(image_ids_key, [])
                 if image_ids:
