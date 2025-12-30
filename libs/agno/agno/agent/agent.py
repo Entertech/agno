@@ -7028,7 +7028,8 @@ class Agent:
             agent_session: AgentSession = self.agent_session or self.get_agent_session(
                 session_id=session_id, user_id=user_id
             )
-            run=AgentRunCreate(
+            create_agent_run(
+                run=AgentRunCreate(
                     run_id=self.run_id,
                     run_data=run_data,
                     session_id=agent_session.session_id,
