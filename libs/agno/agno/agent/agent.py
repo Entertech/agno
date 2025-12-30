@@ -178,8 +178,6 @@ class Agent:
     show_tool_calls: bool = True
     # Maximum number of tool calls allowed.
     tool_call_limit: Optional[int] = None
-    # If True, the agent deletes tool metrics from the tool calls in the run response
-    delete_tool_metrics_in_run_response: bool = False
     # Controls which (if any) tool is called by the model.
     # "none" means the model will not call a tool and instead generates a message.
     # "auto" means the model can pick between generating a message or calling a tool.
@@ -371,7 +369,6 @@ class Agent:
         extra_data: Optional[Dict[str, Any]] = None,
         tools: Optional[List[Union[Toolkit, Callable, Function, Dict]]] = None,
         show_tool_calls: bool = True,
-        delete_tool_metrics_in_run_response: bool = False,
         tool_call_limit: Optional[int] = None,
         tool_choice: Optional[Union[str, Dict[str, Any]]] = None,
         tool_hooks: Optional[List[Callable]] = None,
@@ -467,7 +464,6 @@ class Agent:
 
         self.tools = tools
         self.show_tool_calls = show_tool_calls
-        self.delete_tool_metrics_in_run_response = delete_tool_metrics_in_run_response
         self.tool_call_limit = tool_call_limit
         self.tool_choice = tool_choice
         self.tool_hooks = tool_hooks
