@@ -91,6 +91,7 @@ class AgentSessionsResponse(BaseModel):
     session_id: Optional[str] = None
     session_name: Optional[str] = None
     created_at: Optional[int] = None
+    updated_at: Optional[int] = None
 
 
 class MemoryResponse(BaseModel):
@@ -107,6 +108,7 @@ class WorkflowRunRequest(BaseModel):
     input: Dict[str, Any]
     user_id: Optional[str] = None
     session_id: Optional[str] = None
+    stream: bool = True
 
 
 class WorkflowSessionResponse(BaseModel):
@@ -114,6 +116,7 @@ class WorkflowSessionResponse(BaseModel):
     session_id: Optional[str] = None
     session_name: Optional[str] = None
     created_at: Optional[int] = None
+    updated_at: Optional[int] = None
 
 
 class WorkflowGetResponse(BaseModel):
@@ -212,6 +215,7 @@ class TeamSessionResponse(BaseModel):
     session_id: Optional[str] = None
     session_name: Optional[str] = None
     created_at: Optional[int] = None
+    updated_at: Optional[int] = None
 
 
 class TeamRenameRequest(BaseModel):

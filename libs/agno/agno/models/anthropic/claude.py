@@ -11,7 +11,7 @@ from agno.models.base import Model
 from agno.models.message import Citations, DocumentCitation, Message, UrlCitation
 from agno.models.response import ModelResponse
 from agno.utils.log import log_debug, log_error, log_warning
-from agno.utils.models.claude import MCPServerConfiguration, format_messages
+from agno.utils.models.claude import MCPServerConfiguration, format_messages, format_tools_for_model
 
 try:
     from anthropic import (
@@ -176,58 +176,11 @@ class Claude(Model):
                 request_kwargs["system"] = [{"text": system_message, "type": "text"}]
 
         if tools:
-            request_kwargs["tools"] = self._format_tools_for_model(tools)
+            request_kwargs["tools"] = format_tools_for_model(tools)
 
         if request_kwargs:
             log_debug(f"Calling {self.provider} with request parameters: {request_kwargs}", log_level=2)
         return request_kwargs
-
-    def _format_tools_for_model(self, tools: Optional[List[Dict[str, Any]]] = None) -> Optional[List[Dict[str, Any]]]:
-        """
-        Transforms function definitions into a format accepted by the Anthropic API.
-        """
-        if not tools:
-            return None
-
-        parsed_tools: List[Dict[str, Any]] = []
-        for tool_def in tools:
-            if tool_def.get("type", "") != "function":
-                parsed_tools.append(tool_def)
-                continue
-
-            func_def = tool_def.get("function", {})
-            parameters: Dict[str, Any] = func_def.get("parameters", {})
-            properties: Dict[str, Any] = parameters.get("properties", {})
-            required_params: List[str] = []
-
-            for param_name, param_info in properties.items():
-                param_type = param_info.get("type", "")
-                param_type_list: List[str] = [param_type] if isinstance(param_type, str) else param_type or []
-
-                if "null" not in param_type_list:
-                    required_params.append(param_name)
-
-            input_properties: Dict[str, Dict[str, Union[str, List[str]]]] = {}
-            for param_name, param_info in properties.items():
-                input_properties[param_name] = {
-                    "description": param_info.get("description", ""),
-                }
-                if "type" not in param_info and "anyOf" in param_info:
-                    input_properties[param_name]["anyOf"] = param_info["anyOf"]
-                else:
-                    input_properties[param_name]["type"] = param_info.get("type", "")
-
-            tool = {
-                "name": func_def.get("name") or "",
-                "description": func_def.get("description") or "",
-                "input_schema": {
-                    "type": parameters.get("type", "object"),
-                    "properties": input_properties,
-                    "required": required_params,
-                },
-            }
-            parsed_tools.append(tool)
-        return parsed_tools
 
     def invoke(
         self,
@@ -427,16 +380,13 @@ class Claude(Model):
             log_error(f"Unexpected error calling Claude API: {str(e)}")
             raise ModelProviderError(message=str(e), model_name=self.name, model_id=self.id) from e
 
-    def format_function_call_results(
-        self, messages: List[Message], function_call_results: List[Message], tool_ids: List[str]
-    ) -> None:
+    def format_function_call_results(self, messages: List[Message], function_call_results: List[Message]) -> None:
         """
         Handle the results of function calls.
 
         Args:
             messages (List[Message]): The list of conversation messages.
             function_call_results (List[Message]): The results of the function calls.
-            tool_ids (List[str]): The tool ids.
         """
         if len(function_call_results) > 0:
             fc_responses: List = []
@@ -452,7 +402,7 @@ class Claude(Model):
 
     def get_system_message_for_model(self, tools: Optional[List[Any]] = None) -> Optional[str]:
         if tools is not None and len(tools) > 0:
-            tool_call_prompt = "Do not reflect on the quality of the returned search results in your response"
+            tool_call_prompt = "Do not reflect on the quality of the returned search results in your response\n\n"
             return tool_call_prompt
         return None
 
@@ -518,7 +468,6 @@ class Claude(Model):
                         function_def["arguments"] = json.dumps(tool_input)
 
                     model_response.extra = model_response.extra or {}
-                    model_response.extra.setdefault("tool_ids", []).append(block.id)
                     model_response.tool_calls.append(
                         {
                             "id": block.id,
@@ -574,7 +523,6 @@ class Claude(Model):
                 }
 
         elif isinstance(response, ContentBlockStopEvent):
-            # Handle tool calls
             if response.content_block.type == "tool_use":  # type: ignore
                 tool_use = response.content_block  # type: ignore
                 tool_name = tool_use.name
@@ -585,7 +533,6 @@ class Claude(Model):
                     function_def["arguments"] = json.dumps(tool_input)
 
                 model_response.extra = model_response.extra or {}
-                model_response.extra.setdefault("tool_ids", []).append(tool_use.id)
 
                 model_response.tool_calls = [
                     {
